@@ -1,0 +1,32 @@
+{
+  "name": "water-shop-api",
+  "version": "1.0.0",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "seed": "node src/utils/seed.js",
+    "create-test-users": "node src/utils/createTestUser.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "水品质商城微信小程序后端API",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.14.1",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.0"
+  },
+  "devDependencies": {
+    "axios": "^1.9.0",
+    "form-data": "^4.0.2",
+    "mongodb-memory-server": "^10.1.4",
+    "nodemon": "^3.1.10"
+  }
+}
