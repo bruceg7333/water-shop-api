@@ -1284,3 +1284,63 @@ exports.getStatisticsOverview = async (req, res) => {
     });
   }
 };
+
+// 获取用户订单统计数据（用于个人中心显示角标）
+exports.getUserOrderStatistics = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // 统计各状态的订单数量
+    const statistics = await Order.aggregate([
+      {
+        $match: { user: new mongoose.Types.ObjectId(userId) }
+      },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    // 初始化统计结果
+    const result = {
+      pendingPayment: 0,    // 待付款
+      pendingShipment: 0,   // 待发货
+      pendingReceipt: 0,    // 待收货
+      completed: 0          // 已完成
+    };
+    
+    // 填充统计数据
+    statistics.forEach(stat => {
+      switch (stat._id) {
+        case 'pending_payment':
+          result.pendingPayment = stat.count;
+          break;
+        case 'pending_shipment':
+          result.pendingShipment = stat.count;
+          break;
+        case 'pending_receipt':
+          result.pendingReceipt = stat.count;
+          break;
+        case 'completed':
+          result.completed = stat.count;
+          break;
+      }
+    });
+    
+    console.log('用户订单统计结果:', result);
+    
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('获取用户订单统计失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取用户订单统计失败',
+      error: error.message
+    });
+  }
+};

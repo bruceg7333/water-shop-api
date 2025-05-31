@@ -6,6 +6,7 @@ const router = express.Router();
 // 需要身份验证的路由
 router.post('/', protect, orderController.createOrder);
 router.get('/me', protect, orderController.getMyOrders);
+router.get('/statistics', protect, orderController.getUserOrderStatistics);
 router.get('/status/:status', protect, orderController.getOrdersByStatus);
 router.get('/:id', protect, orderController.getOrderById);
 router.put('/:id/pay', protect, orderController.updateOrderToPaid);
