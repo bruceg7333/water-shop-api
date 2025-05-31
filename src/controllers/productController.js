@@ -170,6 +170,11 @@ exports.getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     
+    console.log('=== 获取商品详情 ===');
+    console.log('商品ID:', req.params.id);
+    console.log('原始商品数据:', product ? JSON.stringify(product.toObject(), null, 2) : 'null');
+    console.log('imageGallery字段:', product ? product.imageGallery : 'null');
+    
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -196,11 +201,14 @@ exports.getProductById = async (req, res) => {
       price: product.price,
       originalPrice: product.originalPrice,
       image: product.imageUrl,
-      images: product.images || [product.imageUrl],
+      imageUrl: product.imageUrl, // 添加imageUrl字段供前端使用
+      imageGallery: product.imageGallery || [], // 修复：使用正确的字段名
+      images: product.imageGallery || [], // 保持兼容性
       specifications: product.specifications || [],
       stock: product.stock,
       sales: product.sales,
       category: product.category,
+      tag: product.tag, // 保持原始格式
       tags: product.tag ? [product.tag] : [],
       detailContent: product.detailContent || `<div>${product.description}</div>`,
       rating: reviewStats.length > 0 ? reviewStats[0].avgRating.toFixed(1) : "0.0",
@@ -472,6 +480,11 @@ exports.updateProduct = async (req, res) => {
     const productId = req.params.id;
     const updateData = req.body;
     
+    console.log('=== 更新商品数据 ===');
+    console.log('商品ID:', productId);
+    console.log('更新数据:', JSON.stringify(updateData, null, 2));
+    console.log('imageGallery字段:', updateData.imageGallery);
+    
     const product = await Product.findById(productId);
     
     if (!product) {
@@ -481,11 +494,16 @@ exports.updateProduct = async (req, res) => {
       });
     }
     
+    console.log('更新前的商品数据:', JSON.stringify(product.toObject(), null, 2));
+    
     const updatedProduct = await Product.findByIdAndUpdate(
       productId, 
       updateData, 
       { new: true, runValidators: true }
     );
+    
+    console.log('更新后的商品数据:', JSON.stringify(updatedProduct.toObject(), null, 2));
+    console.log('更新后的imageGallery:', updatedProduct.imageGallery);
     
     res.status(200).json({
       success: true,

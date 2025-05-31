@@ -183,24 +183,112 @@ exports.incrementShareCount = async (req, res) => {
   }
 };
 
-// 以下是后台管理接口，实际使用时应加入管理员权限验证
+// 以下是后台管理接口
 
-// 创建文章
-exports.createArticle = async (req, res) => {
+// 管理端获取内容列表（包含未发布的）
+exports.getContentsForAdmin = async (req, res) => {
   try {
-    const newArticle = await Article.create(req.body);
+    const { 
+      page = 1, 
+      limit = 10, 
+      category, 
+      type, 
+      status, 
+      keyword 
+    } = req.query;
     
-    res.status(201).json({
+    const query = {};
+    
+    // 分类筛选
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+    
+    // 类型筛选
+    if (type && type !== 'all') {
+      query.type = type;
+    }
+    
+    // 状态筛选
+    if (status && status !== 'all') {
+      query.isPublished = status === 'published';
+    }
+    
+    // 关键词搜索
+    if (keyword) {
+      query.$or = [
+        { title: { $regex: keyword, $options: 'i' } },
+        { summary: { $regex: keyword, $options: 'i' } }
+      ];
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const total = await Article.countDocuments(query);
+    
+    const contents = await Article.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    res.status(200).json({
       success: true,
       data: {
-        article: newArticle
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        contents
       }
     });
   } catch (error) {
-    console.error('创建文章出错:', error);
+    console.error('获取内容列表出错:', error);
     res.status(500).json({
       success: false,
-      message: '创建文章出错',
+      message: '获取内容列表出错',
+      error: error.message
+    });
+  }
+};
+
+// 管理端获取内容详情
+exports.getContentByIdForAdmin = async (req, res) => {
+  try {
+    const content = await Article.findById(req.params.id);
+    
+    if (!content) {
+      return res.status(404).json({
+        success: false,
+        message: '内容不存在'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      data: { content }
+    });
+  } catch (error) {
+    console.error('获取内容详情出错:', error);
+    res.status(500).json({
+      success: false,
+      message: '获取内容详情出错',
+      error: error.message
+    });
+  }
+};
+
+// 创建内容
+exports.createContent = async (req, res) => {
+  try {
+    const newContent = await Article.create(req.body);
+    
+    res.status(201).json({
+      success: true,
+      data: { content: newContent }
+    });
+  } catch (error) {
+    console.error('创建内容出错:', error);
+    res.status(500).json({
+      success: false,
+      message: '创建内容出错',
       error: error.message
     });
   }

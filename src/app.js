@@ -37,6 +37,7 @@ const articleRoutes = require('./routes/articleRoutes');
 const pointRoutes = require('./routes/pointRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
+const bannerRoutes = require('./routes/banner');
 
 // API路由
 app.use('/api/products', productRoutes);
@@ -52,6 +53,7 @@ app.use('/api/articles', articleRoutes);
 app.use('/api/points', pointRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/banners', bannerRoutes);
 
 // 首页路由
 app.get('/', (req, res) => {

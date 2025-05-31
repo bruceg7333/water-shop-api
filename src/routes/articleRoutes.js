@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const articleController = require('../controllers/articleController');
-const { protect, authorize } = require('../middlewares/auth');
+const { protect, authorize } = require('../middlewares/adminAuth');
 
 // 公开API
 router.get('/', articleController.getArticles);
@@ -10,11 +10,10 @@ router.get('/:id', articleController.getArticleById);
 router.post('/:id/share', articleController.incrementShareCount);
 
 // 管理员API（需要权限验证）
-router.use(protect);
-router.use(authorize('admin'));
-
-router.post('/', articleController.createArticle);
-router.put('/:id', articleController.updateArticle);
-router.delete('/:id', articleController.deleteArticle);
+router.get('/admin/contents', protect, authorize('content_read'), articleController.getContentsForAdmin);
+router.get('/admin/contents/:id', protect, authorize('content_read'), articleController.getContentByIdForAdmin);
+router.post('/admin/contents', protect, authorize('content_create'), articleController.createContent);
+router.put('/admin/contents/:id', protect, authorize('content_update'), articleController.updateArticle);
+router.delete('/admin/contents/:id', protect, authorize('content_delete'), articleController.deleteArticle);
 
 module.exports = router; 

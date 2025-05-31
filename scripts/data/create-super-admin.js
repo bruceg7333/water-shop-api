@@ -41,7 +41,7 @@ async function createSuperAdmin() {
     console.log('真实姓名: 超级管理员');
     console.log('角色: super_admin');
     console.log('==================================');
-    console.log('⚠️  请登录后台管理系统后立即修改密码！');
+    console.log('⚠️  请登录SPRINKLE后台后立即修改密码！');
 
   } catch (error) {
     console.error('❌ 创建超级管理员失败:', error);

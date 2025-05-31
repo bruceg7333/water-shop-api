@@ -1,5 +1,5 @@
 /**
- * 水商城后台管理系统 - 系统初始化脚本
+ * SPRINKLE - 系统初始化脚本
  * 用于首次部署时创建必要的初始数据
  * 包括：超级管理员、系统配置、会员等级设置等
  */
@@ -203,7 +203,7 @@ class SystemInitializer {
 
   // 执行完整初始化流程
   async runInitialization() {
-    console.log('🚀 开始水商城系统初始化...');
+    console.log('🚀 开始SPRINKLE系统初始化...');
     console.log('================================================');
     
     await this.createSuperAdmin();

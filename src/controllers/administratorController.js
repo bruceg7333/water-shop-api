@@ -1,4 +1,4 @@
-const Administrator = require('../models/administrator');
+const Administrator = require('../models/Administrator');
 const { generateToken } = require('../utils/jwt');
 const mongoose = require('mongoose');
 
@@ -310,6 +310,14 @@ exports.updateAdministrator = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: '不能禁用自己的账户'
+      });
+    }
+
+    // 不能禁用超级管理员
+    if (administrator.role === 'super_admin' && isActive === false) {
+      return res.status(400).json({
+        success: false,
+        message: '超级管理员不能被禁用'
       });
     }
     

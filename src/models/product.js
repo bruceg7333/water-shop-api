@@ -19,6 +19,10 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: [true, '商品图片不能为空']
   },
+  imageGallery: {
+    type: [String],
+    default: []
+  },
   sales: {
     type: Number,
     default: 0

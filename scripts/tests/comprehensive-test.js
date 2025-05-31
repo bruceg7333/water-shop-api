@@ -1,5 +1,5 @@
 /**
- * 水商城后台管理系统 - 综合功能测试脚本
+ * SPRINKLE - 综合功能测试脚本
  * 整合所有功能测试，一次性验证系统各项功能
  */
 
@@ -263,7 +263,7 @@ class ComprehensiveTest {
 
   // 执行所有测试
   async runAllTests() {
-    console.log('🚀 启动水商城后台管理系统综合测试...');
+    console.log('🚀 启动SPRINKLE综合测试...');
     console.log('==================================================');
     
     await this.testAuthentication();

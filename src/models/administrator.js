@@ -55,6 +55,8 @@ const administratorSchema = new mongoose.Schema({
       'user_view', 'user_edit', 'user_delete',
       'product_view', 'product_edit', 'product_delete', 'product_create',
       'order_view', 'order_edit', 'order_delete',
+      'banner_read', 'banner_create', 'banner_update', 'banner_delete',
+      'content_read', 'content_create', 'content_update', 'content_delete',
       'statistics_view',
       'system_settings',
       'admin_manage'
@@ -119,6 +121,8 @@ administratorSchema.methods.getRolePermissions = function() {
       'user_view', 'user_edit', 'user_delete',
       'product_view', 'product_edit', 'product_delete', 'product_create',
       'order_view', 'order_edit', 'order_delete',
+      'banner_read', 'banner_create', 'banner_update', 'banner_delete',
+      'content_read', 'content_create', 'content_update', 'content_delete',
       'statistics_view',
       'system_settings',
       'admin_manage'
@@ -127,18 +131,23 @@ administratorSchema.methods.getRolePermissions = function() {
       'user_view', 'user_edit', 'user_delete',
       'product_view', 'product_edit', 'product_delete', 'product_create',
       'order_view', 'order_edit', 'order_delete',
+      'banner_read', 'banner_create', 'banner_update', 'banner_delete',
+      'content_read', 'content_create', 'content_update', 'content_delete',
       'statistics_view'
     ],
     operator: [
       'user_view',
       'product_view', 'product_edit',
       'order_view', 'order_edit',
+      'banner_read', 'banner_create', 'banner_update',
+      'content_read', 'content_create', 'content_update',
       'statistics_view'
     ],
     viewer: [
       'user_view',
       'product_view',
       'order_view',
+      'banner_read',
       'statistics_view'
     ]
   };

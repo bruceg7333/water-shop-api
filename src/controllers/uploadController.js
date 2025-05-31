@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const sharp = require('sharp');
 
 // 配置存储
 const storage = multer.diskStorage({
@@ -40,11 +41,69 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 限制5MB
 });
 
+// 压缩图片函数
+const compressImage = async (filePath, options = {}) => {
+  try {
+    const imageInfo = await sharp(filePath).metadata();
+    
+    // 根据图片大小决定压缩质量
+    let quality = 80; // 默认质量
+    let width = imageInfo.width;
+    
+    // 文件大于200KB需要压缩
+    const stats = fs.statSync(filePath);
+    const fileSizeInKB = stats.size / 1024;
+    
+    if (fileSizeInKB > 200) {
+      // 如果文件太大，降低质量和尺寸
+      quality = Math.min(quality, Math.floor(200 / fileSizeInKB * 80));
+      
+      // 如果质量已经很低但文件仍然太大，则降低尺寸
+      if (quality < 40 && width > 800) {
+        width = Math.floor(width * 0.7); // 降低到70%
+      }
+    }
+    
+    // 根据文件类型处理
+    let compressedImage;
+    if (imageInfo.format === 'png') {
+      compressedImage = await sharp(filePath)
+        .resize({ width: width, withoutEnlargement: true })
+        .png({ quality, compressionLevel: 9 })
+        .toBuffer();
+    } else if (imageInfo.format === 'jpeg' || imageInfo.format === 'jpg') {
+      compressedImage = await sharp(filePath)
+        .resize({ width: width, withoutEnlargement: true })
+        .jpeg({ quality })
+        .toBuffer();
+    } else if (imageInfo.format === 'webp') {
+      compressedImage = await sharp(filePath)
+        .resize({ width: width, withoutEnlargement: true })
+        .webp({ quality })
+        .toBuffer();
+    } else {
+      // 其他格式，尝试转换为jpg
+      compressedImage = await sharp(filePath)
+        .resize({ width: width, withoutEnlargement: true })
+        .jpeg({ quality })
+        .toBuffer();
+    }
+    
+    // 覆盖原始文件
+    await fs.promises.writeFile(filePath, compressedImage);
+    
+    return true;
+  } catch (error) {
+    console.error('图片压缩失败:', error);
+    return false;
+  }
+};
+
 // 单张图片上传处理
 exports.uploadSingleImage = (req, res) => {
   const uploadSingle = upload.single('image');
   
-  uploadSingle(req, res, (err) => {
+  uploadSingle(req, res, async (err) => {
     if (err) {
       if (err instanceof multer.MulterError) {
         // Multer 错误
@@ -74,18 +133,35 @@ exports.uploadSingleImage = (req, res) => {
       });
     }
     
-    // 生成可访问的URL路径
-    const filePath = `/uploads/${req.file.filename}`;
+    // 压缩图片以满足微信小程序200KB的限制
+    const filePath = path.join(__dirname, '../../public/uploads', req.file.filename);
     
-    res.status(200).json({
-      success: true,
-      data: {
-        url: filePath,
-        filename: req.file.filename,
-        mimetype: req.file.mimetype,
-        size: req.file.size
-      }
-    });
+    try {
+      await compressImage(filePath);
+      
+      // 获取压缩后的文件大小
+      const stats = fs.statSync(filePath);
+      const compressedSize = stats.size;
+      
+      // 生成可访问的URL路径
+      const fileUrl = `/uploads/${req.file.filename}`;
+      
+      res.status(200).json({
+        success: true,
+        data: {
+          url: fileUrl,
+          filename: req.file.filename,
+          mimetype: req.file.mimetype,
+          size: compressedSize
+        }
+      });
+    } catch (error) {
+      console.error('图片处理失败:', error);
+      return res.status(500).json({
+        success: false,
+        message: '图片处理失败'
+      });
+    }
   });
 };
 
@@ -93,7 +169,7 @@ exports.uploadSingleImage = (req, res) => {
 exports.uploadMultipleImages = (req, res) => {
   const uploadMultiple = upload.array('images', 5); // 最多5张
   
-  uploadMultiple(req, res, (err) => {
+  uploadMultiple(req, res, async (err) => {
     if (err) {
       if (err instanceof multer.MulterError) {
         // Multer 错误
@@ -128,18 +204,37 @@ exports.uploadMultipleImages = (req, res) => {
       });
     }
     
-    // 生成可访问的URL路径
-    const filesInfo = req.files.map(file => ({
-      url: `/uploads/${file.filename}`,
-      filename: file.filename,
-      mimetype: file.mimetype,
-      size: file.size
-    }));
-    
-    res.status(200).json({
-      success: true,
-      data: filesInfo
-    });
+    try {
+      // 处理每个图片
+      const filesInfo = await Promise.all(req.files.map(async (file) => {
+        const filePath = path.join(__dirname, '../../public/uploads', file.filename);
+        
+        // 压缩图片
+        await compressImage(filePath);
+        
+        // 获取压缩后的文件大小
+        const stats = fs.statSync(filePath);
+        const compressedSize = stats.size;
+        
+        return {
+          url: `/uploads/${file.filename}`,
+          filename: file.filename,
+          mimetype: file.mimetype,
+          size: compressedSize
+        };
+      }));
+      
+      res.status(200).json({
+        success: true,
+        data: filesInfo
+      });
+    } catch (error) {
+      console.error('图片处理失败:', error);
+      return res.status(500).json({
+        success: false,
+        message: '图片处理失败'
+      });
+    }
   });
 };
 
@@ -151,4 +246,14 @@ exports.uploadProductImage = (req, res) => {
 // 商品图片集上传
 exports.uploadProductGallery = (req, res) => {
   exports.uploadMultipleImages(req, res);
+};
+
+// 轮播图上传
+exports.uploadBannerImage = (req, res) => {
+  exports.uploadSingleImage(req, res);
+};
+
+// 内容图片上传
+exports.uploadContentImage = (req, res) => {
+  exports.uploadSingleImage(req, res);
 }; 
