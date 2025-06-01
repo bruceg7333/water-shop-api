@@ -36,6 +36,22 @@ const userSchema = new mongoose.Schema({
     enum: ['男', '女', '未知'],
     default: '未知'
   },
+  birthday: {
+    type: Date
+  },
+  email: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    validate: {
+      validator: function(v) {
+        // 如果email为空或未定义，跳过验证
+        if (!v) return true;
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+      },
+      message: '请输入有效的邮箱地址'
+    }
+  },
   role: {
     type: String,
     enum: ['user', 'admin'],

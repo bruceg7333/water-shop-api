@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middlewares/adminAuth');
 const uploadController = require('../controllers/uploadController');
+const { protect: userProtect } = require('../middlewares/auth'); // 用户认证中间件
 
 // 商品图片上传路由 - 需要管理员权限
 router.post('/product', protect, authorize('product_create'), uploadController.uploadProductImage);
@@ -20,5 +21,8 @@ router.post('/content', protect, authorize('content_create'), uploadController.u
 
 // 无需权限的公共上传测试路由（仅用于测试）
 router.post('/test', uploadController.uploadSingleImage);
+
+// 用户头像上传路由 - 需要用户登录
+router.post('/avatar', userProtect, uploadController.uploadSingleImage);
 
 module.exports = router; 

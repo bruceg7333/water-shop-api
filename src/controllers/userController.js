@@ -5,6 +5,60 @@ const axios = require('axios');
 // 引入配置文件
 const config = require('../config/config');
 const mongoose = require('mongoose');
+// 添加文件系统和路径处理模块
+const fs = require('fs');
+const path = require('path');
+
+// 下载并保存微信头像到服务器
+async function downloadWechatAvatar(avatarUrl) {
+  if (!avatarUrl || !avatarUrl.startsWith('http')) {
+    return null;
+  }
+  
+  try {
+    console.log('开始下载微信头像:', avatarUrl);
+    
+    // 下载图片
+    const response = await axios.get(avatarUrl, {
+      responseType: 'stream',
+      timeout: 10000 // 10秒超时
+    });
+    
+    // 生成文件名
+    const timestamp = Date.now();
+    const fileExtension = '.jpeg'; // 微信头像通常是jpeg格式
+    const fileName = `wechat_avatar_${timestamp}${fileExtension}`;
+    
+    // 确保uploads目录存在
+    const uploadsDir = path.join(__dirname, '../../public/uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    
+    // 保存文件
+    const filePath = path.join(uploadsDir, fileName);
+    const writer = fs.createWriteStream(filePath);
+    
+    response.data.pipe(writer);
+    
+    return new Promise((resolve, reject) => {
+      writer.on('finish', () => {
+        const serverUrl = `/uploads/${fileName}`;
+        console.log('微信头像保存成功:', serverUrl);
+        resolve(serverUrl);
+      });
+      
+      writer.on('error', (error) => {
+        console.error('微信头像保存失败:', error);
+        reject(error);
+      });
+    });
+    
+  } catch (error) {
+    console.error('微信头像下载失败:', error);
+    return null;
+  }
+}
 
 // 用户注册
 exports.register = async (req, res) => {
@@ -60,6 +114,8 @@ exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
     
+    console.log('登录请求:', { username, password: password ? '***' : 'undefined' });
+    
     // 检查用户名和密码是否提供
     if (!username || !password) {
       return res.status(400).json({
@@ -70,6 +126,7 @@ exports.login = async (req, res) => {
     
     // 查找用户并选择包含密码字段
     const user = await User.findOne({ username }).select('+password');
+    console.log('找到用户:', user ? user.username : '未找到');
     
     // 检查用户是否存在
     if (!user) {
@@ -81,6 +138,8 @@ exports.login = async (req, res) => {
     
     // 验证密码是否匹配
     const isMatch = await user.matchPassword(password);
+    console.log('密码匹配结果:', isMatch);
+    
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -113,6 +172,7 @@ exports.login = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('登录错误:', error);
     res.status(500).json({
       success: false,
       message: '登录失败',
@@ -136,6 +196,8 @@ exports.getCurrentUser = async (req, res) => {
           avatar: user.avatar,
           nickName: user.nickName,
           gender: user.gender,
+          birthday: user.birthday,
+          email: user.email,
           points: user.points,
           role: user.role,
           createdAt: user.createdAt
@@ -154,12 +216,27 @@ exports.getCurrentUser = async (req, res) => {
 // 更新用户资料
 exports.updateProfile = async (req, res) => {
   try {
-    const { nickName, avatar, gender, phone } = req.body;
+    const { nickName, avatar, gender, phone, birthday, email } = req.body;
+    
+    // 处理头像URL - 如果是tmp路径，下载并保存
+    let processedAvatar = avatar;
+    if (avatar && avatar.startsWith('http://tmp/')) {
+      console.log('检测到tmp路径头像，开始下载:', avatar);
+      const downloadedAvatarPath = await downloadWechatAvatar(avatar);
+      if (downloadedAvatarPath) {
+        processedAvatar = downloadedAvatarPath;
+        console.log('tmp头像已下载并保存:', processedAvatar);
+      } else {
+        // 下载失败，使用默认头像
+        processedAvatar = '/assets/images/avatar/default.png';
+        console.log('tmp头像下载失败，使用默认头像');
+      }
+    }
     
     // 查找并更新用户
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
-      { nickName, avatar, gender, phone },
+      { nickName, avatar: processedAvatar, gender, phone, birthday, email },
       { new: true, runValidators: true }
     );
     
@@ -181,6 +258,8 @@ exports.updateProfile = async (req, res) => {
           avatar: updatedUser.avatar,
           nickName: updatedUser.nickName,
           gender: updatedUser.gender,
+          birthday: updatedUser.birthday,
+          email: updatedUser.email,
           points: updatedUser.points
         }
       }
@@ -451,7 +530,7 @@ exports.getAllUsers = async (req, res) => {
 // 微信一键登录
 exports.wechatLogin = async (req, res) => {
   try {
-    const { code, userInfo, password } = req.body;
+    const { code, phoneCode, userInfo, password } = req.body;
     
     if (!code) {
       return res.status(400).json({
@@ -497,43 +576,56 @@ exports.wechatLogin = async (req, res) => {
         password: defaultPassword, // 设置密码
         openid, // 保存微信openid
         nickName: userInfo ? userInfo.nickName : username,
-        avatar: userInfo ? userInfo.avatarUrl : '',
+        avatar: userInfo && userInfo.avatarUrl ? await downloadWechatAvatar(userInfo.avatarUrl) || '' : '',
         gender: userInfo ? userInfo.gender : '未知',
         lastLogin: Date.now()
       });
       
       console.log('用户不存在，已自动创建新用户:', username);
     } else {
-      // 用户存在，更新用户信息
+      // 用户存在，仅更新登录时间，避免覆盖用户自定义的头像和昵称
       if (userInfo) {
-        user.nickName = userInfo.nickName || user.nickName;
-        user.avatar = userInfo.avatarUrl || user.avatar;
-        user.gender = userInfo.gender !== undefined ? userInfo.gender : user.gender;
+        // 只有当用户的昵称还是默认值或为空时，才使用微信昵称
+        if (userInfo.nickName && (!user.nickName || user.nickName === '水商城用户' || user.nickName.startsWith('wx_user_'))) {
+          user.nickName = userInfo.nickName;
+        }
+        
+        // 只有当用户的头像还是默认值或为空时，才使用微信头像
+        if (userInfo.avatarUrl && (!user.avatar || user.avatar === "/assets/images/avatar/default.png")) {
+          const downloadedAvatarPath = await downloadWechatAvatar(userInfo.avatarUrl);
+          if (downloadedAvatarPath) {
+            user.avatar = downloadedAvatarPath;
+          }
+        }
+        // 只有当用户的性别还是默认值或为空时，才使用微信性别
+        if (userInfo.gender !== undefined && (!user.gender || user.gender === '未知')) {
+          user.gender = userInfo.gender;
+        }
         user.lastLogin = Date.now();
         await user.save();
       }
-    }
-    
-    // 生成JWT令牌
-    const token = generateToken({ id: user._id });
-    
-    res.status(200).json({
-      success: true,
-      message: user.lastLogin ? '微信登录成功' : '微信注册并登录成功',
-      data: {
-        token,
-        user: {
-          id: user._id,
-          username: user.username,
-          phone: user.phone,
-          avatar: user.avatar,
-          nickName: user.nickName,
-          gender: user.gender,
-          points: user.points,
-          role: user.role
+      
+      // 生成JWT令牌
+      const token = generateToken({ id: user._id });
+      
+      res.status(200).json({
+        success: true,
+        message: user.lastLogin ? '微信登录成功' : '微信注册并登录成功',
+        data: {
+          token,
+          user: {
+            id: user._id,
+            username: user.username,
+            phone: user.phone,
+            avatar: user.avatar,
+            nickName: user.nickName,
+            gender: user.gender,
+            points: user.points,
+            role: user.role
+          }
         }
-      }
-    });
+      });
+    }
   } catch (error) {
     console.error('微信登录错误:', error);
     res.status(500).json({
@@ -547,7 +639,7 @@ exports.wechatLogin = async (req, res) => {
 // 微信一键注册
 exports.wechatRegister = async (req, res) => {
   try {
-    const { code, userInfo, phone, password } = req.body;
+    const { code, phoneCode, userInfo, phone, password } = req.body;
     
     if (!code) {
       return res.status(400).json({
@@ -583,9 +675,21 @@ exports.wechatRegister = async (req, res) => {
       // 用户已存在，直接返回登录信息
       // 更新用户信息
       if (userInfo) {
-        user.nickName = userInfo.nickName || user.nickName;
-        user.avatar = userInfo.avatarUrl || user.avatar;
-        user.gender = userInfo.gender !== undefined ? userInfo.gender : user.gender;
+        // 只有当用户的昵称还是默认值或为空时，才使用微信昵称
+        if (userInfo.nickName && (!user.nickName || user.nickName === "水商城用户" || user.nickName.startsWith("wx_user_"))) {
+          user.nickName = userInfo.nickName;
+        }
+        // 只有当用户的头像还是默认值或为空时，才使用微信头像
+        if (userInfo.avatarUrl && (!user.avatar || user.avatar === "/assets/images/avatar/default.png")) {
+          const downloadedAvatarPath = await downloadWechatAvatar(userInfo.avatarUrl);
+          if (downloadedAvatarPath) {
+            user.avatar = downloadedAvatarPath;
+          }
+        }
+        // 只有当用户的性别还是默认值或为空时，才使用微信性别
+        if (userInfo.gender !== undefined && (!user.gender || user.gender === '未知')) {
+          user.gender = userInfo.gender;
+        }
         if (phone) {
           user.phone = phone;
         }
@@ -626,9 +730,9 @@ exports.wechatRegister = async (req, res) => {
       username,
       password: defaultPassword, // 设置密码
       openid, // 保存微信openid
-      nickName: userInfo ? userInfo.nickName : username,
-      avatar: userInfo ? userInfo.avatarUrl : '',
-      gender: userInfo ? userInfo.gender : '未知',
+      nickName: userInfo && userInfo.nickName ? userInfo.nickName : username,
+      avatar: userInfo && userInfo.avatarUrl ? await downloadWechatAvatar(userInfo.avatarUrl) || '' : '',
+      gender: userInfo && userInfo.gender ? userInfo.gender : '未知',
       phone: phone || '',
       lastLogin: Date.now()
     });
