@@ -41,6 +41,46 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 限制5MB
 });
 
+// Excel文件上传配置
+const excelStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, '../../temp');
+    // 确保目录存在
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    // 生成唯一文件名
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'import-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+// Excel文件过滤器
+const excelFileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+    'application/vnd.ms-excel' // .xls
+  ];
+  
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('只支持Excel文件格式 (.xlsx, .xls)'), false);
+  }
+};
+
+// Excel上传中间件
+const uploadExcel = multer({
+  storage: excelStorage,
+  fileFilter: excelFileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  }
+});
+
 // 压缩图片函数
 const compressImage = async (filePath, options = {}) => {
   try {
@@ -256,4 +296,7 @@ exports.uploadBannerImage = (req, res) => {
 // 内容图片上传
 exports.uploadContentImage = (req, res) => {
   exports.uploadSingleImage(req, res);
-}; 
+};
+
+// Excel文件上传处理
+exports.uploadExcelFile = uploadExcel.single('file'); 

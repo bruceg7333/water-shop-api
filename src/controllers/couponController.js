@@ -111,11 +111,21 @@ exports.claimCoupon = async (req, res) => {
 // 获取用户的优惠券
 exports.getUserCoupons = async (req, res) => {
   try {
-    const { status = 'all' } = req.query;
-    const now = new Date();
+    const { userId } = req.params;
+    const { status = 'all', page = 1, limit = 20 } = req.query;
+    
+    // 验证用户是否存在
+    const User = require('../models/user');
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: '用户不存在'
+      });
+    }
     
     // 构建查询条件
-    const query = { user: req.user.id };
+    const query = { user: userId };
     
     if (status === 'unused') {
       query.isUsed = false;
@@ -123,12 +133,18 @@ exports.getUserCoupons = async (req, res) => {
       query.isUsed = true;
     }
     
-    // 获取用户的优惠券
+    // 查询总数
+    const total = await UserCoupon.countDocuments(query);
+    
+    // 分页查询
     const userCoupons = await UserCoupon.find(query)
       .populate('coupon')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
     
     // 处理优惠券状态
+    const now = new Date();
     const processedCoupons = userCoupons.map(userCoupon => {
       const result = userCoupon.toObject();
       const coupon = result.coupon;
@@ -146,9 +162,15 @@ exports.getUserCoupons = async (req, res) => {
     
     res.status(200).json({
       success: true,
-      data: processedCoupons
+      data: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        userCoupons: processedCoupons
+      }
     });
   } catch (error) {
+    console.error('获取用户优惠券失败:', error);
     res.status(500).json({
       success: false,
       message: '获取用户优惠券失败',
@@ -404,7 +426,7 @@ exports.getCoupons = async (req, res) => {
       
       // 转换字段名，优先使用frontendType
       return {
-        id: couponObj._id,
+        _id: couponObj._id,
         name: couponObj.name,
         code: couponObj.code,
         description: couponObj.description,
@@ -562,6 +584,174 @@ exports.deleteCoupon = async (req, res) => {
     res.status(500).json({
       success: false,
       message: '删除优惠券失败',
+      error: error.message
+    });
+  }
+};
+
+// 管理员分发优惠券
+exports.distributeCoupons = async (req, res) => {
+  try {
+    const { type, coupons, userId, userIds, batchType, filters } = req.body;
+    
+    // 验证请求数据
+    if (!type || !coupons || coupons.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '请选择分发类型和优惠券'
+      });
+    }
+
+    // 获取目标用户
+    let targetUsers = [];
+    
+    if (type === 'single') {
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: '请选择目标用户'
+        });
+      }
+      
+      const User = require('../models/user');
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: '用户不存在'
+        });
+      }
+      targetUsers = [user];
+    } else if (type === 'batch') {
+      if (!userIds || userIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: '请选择目标用户'
+        });
+      }
+      
+      const User = require('../models/user');
+      targetUsers = await User.find({ _id: { $in: userIds } });
+      
+      if (targetUsers.length !== userIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: '部分用户不存在'
+        });
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: '无效的分发类型'
+      });
+    }
+
+    // 验证优惠券并检查库存
+    const couponIds = coupons.map(c => c.couponId);
+    const availableCoupons = await Coupon.find({ 
+      _id: { $in: couponIds },
+      isActive: true
+    });
+    
+    if (availableCoupons.length !== couponIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: '部分优惠券不存在或已停用'
+      });
+    }
+
+    // 检查优惠券库存
+    for (const couponRequest of coupons) {
+      const coupon = availableCoupons.find(c => c._id.toString() === couponRequest.couponId);
+      if (!coupon) continue;
+      
+      const totalNeedCount = couponRequest.count * targetUsers.length;
+      const remainingCount = coupon.limit ? (coupon.limit - coupon.usedCount) : Number.MAX_SAFE_INTEGER;
+      
+      if (totalNeedCount > remainingCount) {
+        return res.status(400).json({
+          success: false,
+          message: `优惠券 "${coupon.name}" 库存不足，需要 ${totalNeedCount} 张，剩余 ${remainingCount} 张`
+        });
+      }
+    }
+
+    // 执行分发
+    const distributionResults = [];
+    
+    for (const user of targetUsers) {
+      for (const couponRequest of coupons) {
+        const coupon = availableCoupons.find(c => c._id.toString() === couponRequest.couponId);
+        
+        // 为每个用户分发指定数量的优惠券
+        for (let i = 0; i < couponRequest.count; i++) {
+          try {
+            // 检查用户是否已拥有此优惠券
+            const existingUserCoupon = await UserCoupon.findOne({
+              user: user._id,
+              coupon: coupon._id
+            });
+            
+            if (!existingUserCoupon) {
+              // 创建用户优惠券关联
+              const userCoupon = await UserCoupon.create({
+                user: user._id,
+                coupon: coupon._id
+              });
+              
+              distributionResults.push({
+                userId: user._id,
+                username: user.username,
+                couponId: coupon._id,
+                couponName: coupon.name,
+                status: 'success'
+              });
+            } else {
+              distributionResults.push({
+                userId: user._id,
+                username: user.username,
+                couponId: coupon._id,
+                couponName: coupon.name,
+                status: 'skipped',
+                message: '用户已拥有此优惠券'
+              });
+            }
+          } catch (error) {
+            console.error('分发优惠券失败:', error);
+            distributionResults.push({
+              userId: user._id,
+              username: user.username,
+              couponId: coupon._id,
+              couponName: coupon.name,
+              status: 'failed',
+              message: error.message
+            });
+          }
+        }
+      }
+    }
+
+    // 统计分发结果
+    const successCount = distributionResults.filter(r => r.status === 'success').length;
+    const skippedCount = distributionResults.filter(r => r.status === 'skipped').length;
+    const failedCount = distributionResults.filter(r => r.status === 'failed').length;
+
+    res.status(200).json({
+      success: true,
+      message: `分发完成：成功 ${successCount} 张，跳过 ${skippedCount} 张，失败 ${failedCount} 张`,
+      data: {
+        total: distributionResults.length,
+        success: successCount,
+        skipped: skippedCount,
+        failed: failedCount,
+        details: distributionResults
+      }
+    });
+  } catch (error) {
+    console.error('分发优惠券失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '分发优惠券失败',
       error: error.message
     });
   }

@@ -1,5 +1,8 @@
 const Product = require('../models/product');
 const Review = require('../models/review'); // 添加评论模型引用
+const XLSX = require('xlsx'); // 添加Excel处理库
+const path = require('path');
+const fs = require('fs');
 
 // 获取商品列表
 exports.getProducts = async (req, res) => {
@@ -542,6 +545,299 @@ exports.deleteProduct = async (req, res) => {
     res.status(500).json({
       success: false,
       message: '删除商品出错',
+      error: error.message
+    });
+  }
+};
+
+// 下载批量导入模板
+exports.downloadImportTemplate = async (req, res) => {
+  try {
+    // 创建模板数据
+    const templateData = [
+      {
+        '商品名称*': 'SPRINKLE 纯净水',
+        '商品描述*': '来自高山冰川，纯净甘甜，适合全家饮用',
+        '价格*': 2.50,
+        '库存*': 100,
+        '分类*': '纯净水',
+        '标签': '热销',
+        '商品图片URL': '/assets/images/products/default.png',
+        '是否上架': '是',
+        '评分': 4.5,
+        '评分数量': 100
+      },
+      {
+        '商品名称*': 'SPRINKLE 矿泉水',
+        '商品描述*': '富含天然矿物质，口感清爽，健康之选',
+        '价格*': 3.00,
+        '库存*': 80,
+        '分类*': '矿泉水',
+        '标签': '优惠',
+        '商品图片URL': '/assets/images/products/default.png',
+        '是否上架': '是',
+        '评分': 4.2,
+        '评分数量': 50
+      }
+    ];
+
+    // 创建工作簿
+    const wb = XLSX.utils.book_new();
+    
+    // 创建数据工作表
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    
+    // 设置列宽
+    const colWidths = [
+      { wch: 20 }, // 商品名称
+      { wch: 40 }, // 商品描述
+      { wch: 10 }, // 价格
+      { wch: 10 }, // 库存
+      { wch: 15 }, // 分类
+      { wch: 10 }, // 标签
+      { wch: 30 }, // 商品图片URL
+      { wch: 10 }, // 是否上架
+      { wch: 10 }, // 评分
+      { wch: 10 }  // 评分数量
+    ];
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, '商品数据');
+
+    // 创建说明工作表
+    const instructions = [
+      { '字段名称': '商品名称*', '说明': '必填，商品的名称，长度2-50字符', '示例': 'SPRINKLE 纯净水' },
+      { '字段名称': '商品描述*', '说明': '必填，商品的详细描述', '示例': '来自高山冰川，纯净甘甜' },
+      { '字段名称': '价格*', '说明': '必填，商品价格，必须大于0', '示例': '2.50' },
+      { '字段名称': '库存*', '说明': '必填，商品库存数量，必须大于等于0', '示例': '100' },
+      { '字段名称': '分类*', '说明': '必填，商品分类', '示例': '纯净水、矿泉水、气泡水等' },
+      { '字段名称': '标签', '说明': '可选，商品标签', '示例': '热销、新品、优惠、限量' },
+      { '字段名称': '商品图片URL', '说明': '可选，商品主图URL，留空将使用默认图片', '示例': '/assets/images/products/default.png' },
+      { '字段名称': '是否上架', '说明': '可选，是否上架销售', '示例': '是/否，默认为是' },
+      { '字段名称': '评分', '说明': '可选，商品评分0-5分', '示例': '4.5' },
+      { '字段名称': '评分数量', '说明': '可选，评分数量', '示例': '100' }
+    ];
+
+    const instructionWs = XLSX.utils.json_to_sheet(instructions);
+    instructionWs['!cols'] = [
+      { wch: 15 },
+      { wch: 40 },
+      { wch: 30 }
+    ];
+    XLSX.utils.book_append_sheet(wb, instructionWs, '填写说明');
+
+    // 生成Excel文件
+    const fileName = `商品批量导入模板_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const filePath = path.join(__dirname, '../../temp', fileName);
+    
+    // 确保temp目录存在
+    const tempDir = path.dirname(filePath);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    // 写入文件
+    XLSX.writeFile(wb, filePath);
+
+    // 设置响应头
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+
+    // 发送文件
+    res.sendFile(filePath, (err) => {
+      if (err) {
+        console.error('发送文件失败:', err);
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            message: '模板下载失败'
+          });
+        }
+      }
+      
+      // 删除临时文件
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } catch (deleteErr) {
+          console.error('删除临时文件失败:', deleteErr);
+        }
+      }, 5000); // 5秒后删除
+    });
+
+  } catch (error) {
+    console.error('生成模板失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '生成模板失败',
+      error: error.message
+    });
+  }
+};
+
+// 批量导入商品
+exports.importProducts = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: '请上传Excel文件'
+      });
+    }
+
+    // 读取Excel文件
+    const workbook = XLSX.readFile(req.file.path);
+    const sheetName = workbook.SheetNames[0]; // 读取第一个工作表
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // 将工作表转换为JSON
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    if (!jsonData || jsonData.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Excel文件中没有数据'
+      });
+    }
+
+    console.log('导入的原始数据:', jsonData);
+
+    // 验证和处理数据
+    const validProducts = [];
+    const errors = [];
+
+    for (let i = 0; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      const rowNum = i + 2; // Excel行号（从第2行开始，第1行是标题）
+
+      try {
+        // 验证必填字段
+        const requiredFields = {
+          '商品名称*': 'name',
+          '商品描述*': 'description', 
+          '价格*': 'price',
+          '库存*': 'stock',
+          '分类*': 'category'
+        };
+
+        const product = {};
+
+        // 检查必填字段
+        for (const [excelField, dbField] of Object.entries(requiredFields)) {
+          const value = row[excelField];
+          if (!value && value !== 0) {
+            errors.push(`第${rowNum}行：${excelField}不能为空`);
+            continue;
+          }
+          product[dbField] = value;
+        }
+
+        // 如果有必填字段错误，跳过此行
+        if (errors.some(err => err.includes(`第${rowNum}行`))) {
+          continue;
+        }
+
+        // 验证数据类型和范围
+        if (isNaN(product.price) || product.price <= 0) {
+          errors.push(`第${rowNum}行：价格必须是大于0的数字`);
+          continue;
+        }
+
+        if (isNaN(product.stock) || product.stock < 0) {
+          errors.push(`第${rowNum}行：库存必须是大于等于0的整数`);
+          continue;
+        }
+
+        // 验证商品名称长度
+        if (product.name.length < 2 || product.name.length > 50) {
+          errors.push(`第${rowNum}行：商品名称长度必须在2-50个字符之间`);
+          continue;
+        }
+
+        // 处理可选字段
+        product.tag = row['标签'] || '';
+        product.imageUrl = row['商品图片URL'] || '/assets/images/products/default.png';
+        product.isActive = row['是否上架'] === '否' ? false : true;
+        product.rating = parseFloat(row['评分']) || 0;
+        product.ratingsCount = parseInt(row['评分数量']) || 0;
+        
+        // 验证评分范围
+        if (product.rating < 0 || product.rating > 5) {
+          product.rating = 0;
+        }
+
+        // 验证标签
+        const validTags = ['热销', '新品', '优惠', '限量', ''];
+        if (product.tag && !validTags.includes(product.tag)) {
+          errors.push(`第${rowNum}行：标签必须是：${validTags.filter(t => t).join('、')} 或留空`);
+          continue;
+        }
+
+        // 设置默认值
+        product.sales = 0;
+        product.allowReviews = true;
+        product.status = '正常';
+
+        validProducts.push(product);
+
+      } catch (error) {
+        errors.push(`第${rowNum}行：数据处理错误 - ${error.message}`);
+      }
+    }
+
+    // 如果有错误，返回错误信息
+    if (errors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: '数据验证失败',
+        errors: errors.slice(0, 10), // 最多返回10个错误
+        totalErrors: errors.length
+      });
+    }
+
+    if (validProducts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '没有有效的商品数据可以导入'
+      });
+    }
+
+    // 批量插入商品
+    const insertedProducts = await Product.insertMany(validProducts);
+
+    // 删除临时文件
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (deleteErr) {
+      console.error('删除临时文件失败:', deleteErr);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `成功导入 ${insertedProducts.length} 个商品`,
+      data: {
+        imported: insertedProducts.length,
+        products: insertedProducts
+      }
+    });
+
+  } catch (error) {
+    console.error('批量导入商品失败:', error);
+    
+    // 删除临时文件
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (deleteErr) {
+        console.error('删除临时文件失败:', deleteErr);
+      }
+    }
+
+    res.status(500).json({
+      success: false,
+      message: '批量导入失败',
       error: error.message
     });
   }

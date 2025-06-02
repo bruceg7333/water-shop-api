@@ -6,6 +6,7 @@ const productController = require('../controllers/productController');
 const orderController = require('../controllers/orderController');
 const couponController = require('../controllers/couponController');
 const administratorController = require('../controllers/administratorController');
+const uploadController = require('../controllers/uploadController');
 
 // 管理员登录路由 - 不需要身份验证
 router.post('/auth/login', administratorController.adminLogin);
@@ -38,6 +39,10 @@ router.post('/products', authorize('product_create'), productController.createPr
 router.put('/products/:id', authorize('product_edit'), productController.updateProduct);
 router.delete('/products/:id', authorize('product_delete'), productController.deleteProduct);
 
+// 商品批量导入路由
+router.get('/products/import/template', authorize('product_create'), productController.downloadImportTemplate);
+router.post('/products/import', authorize('product_create'), uploadController.uploadExcelFile, productController.importProducts);
+
 // 订单管理路由
 router.get('/orders', authorize('order_view'), orderController.getAllOrders);
 router.get("/orders/latest", authorize('order_view'), orderController.getLatestOrders);
@@ -46,9 +51,15 @@ router.put('/orders/:id/status', authorize('order_edit'), orderController.update
 
 // 优惠券管理路由
 router.get('/coupons', authorize('product_view'), couponController.getCoupons);
-router.post('/coupons', authorize('product_create'), couponController.createCoupon);
-router.put('/coupons/:id', authorize('product_edit'), couponController.updateCoupon);
-router.delete('/coupons/:id', authorize('product_delete'), couponController.deleteCoupon);
+router.post('/coupons', authorize('product_manage'), couponController.createCoupon);
+router.put('/coupons/:id', authorize('product_manage'), couponController.updateCoupon);
+router.delete('/coupons/:id', authorize('product_manage'), couponController.deleteCoupon);
+
+// 优惠券分发路由
+router.post('/coupons/distribute', authorize('user_manage'), couponController.distributeCoupons);
+
+// 用户优惠券管理路由
+router.get('/users/:userId/coupons', authorize('user_view'), couponController.getUserCoupons);
 
 // 统计数据路由
 router.get('/products/sales/stats', authorize('statistics_view'), orderController.getProductSalesData);
