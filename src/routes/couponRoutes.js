@@ -18,6 +18,9 @@ router.get('/me', couponController.getUserCoupons);
 // 验证优惠券
 router.get('/verify/:couponId', couponController.verifyCoupon);
 
+// 检查优惠券代码是否重复
+router.get('/check-code', authorize('admin'), couponController.checkCouponCode);
+
 // 管理员路由
 router.post('/', authorize('admin'), couponController.createCoupon);
 

@@ -51,6 +51,7 @@ router.put('/orders/:id/status', authorize('order_edit'), orderController.update
 
 // 优惠券管理路由
 router.get('/coupons', authorize('product_view'), couponController.getCoupons);
+router.get('/coupons/check-code', authorize('product_view'), couponController.checkCouponCode);
 router.post('/coupons', authorize('product_manage'), couponController.createCoupon);
 router.put('/coupons/:id', authorize('product_manage'), couponController.updateCoupon);
 router.delete('/coupons/:id', authorize('product_manage'), couponController.deleteCoupon);

@@ -278,6 +278,39 @@ exports.verifyCoupon = async (req, res) => {
 };
 
 // 管理员创建优惠券
+// 检查优惠券代码是否重复
+exports.checkCouponCode = async (req, res) => {
+  try {
+    const { code } = req.query;
+    
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: '优惠券代码不能为空'
+      });
+    }
+    
+    // 检查代码是否已存在
+    const existingCoupon = await Coupon.findOne({ code });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        code,
+        exists: !!existingCoupon,
+        message: existingCoupon ? '优惠券代码已存在' : '优惠券代码可用'
+      }
+    });
+  } catch (error) {
+    console.error('检查优惠券代码失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '检查优惠券代码失败',
+      error: error.message
+    });
+  }
+};
+
 exports.createCoupon = async (req, res) => {
   try {
     const {
