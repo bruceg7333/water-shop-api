@@ -111,17 +111,21 @@ exports.claimCoupon = async (req, res) => {
 // 获取用户的优惠券
 exports.getUserCoupons = async (req, res) => {
   try {
-    const { userId } = req.params;
+    // 支持两种方式：URL参数中的userId或当前登录用户
+    const userId = req.params.userId || req.user.id;
     const { status = 'all', page = 1, limit = 20 } = req.query;
     
-    // 验证用户是否存在
-    const User = require('../models/user');
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: '用户不存在'
-      });
+    // 如果使用URL参数中的userId，需要验证用户是否存在
+    // 如果使用当前登录用户，则跳过用户存在性验证（因为已经通过认证）
+    if (req.params.userId) {
+      const User = require('../models/user');
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: '用户不存在'
+        });
+      }
     }
     
     // 构建查询条件
@@ -143,30 +147,50 @@ exports.getUserCoupons = async (req, res) => {
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
     
-    // 处理优惠券状态
+    // 处理优惠券状态，转换为小程序期望的格式
     const now = new Date();
+    // 添加日期格式化函数
+    const formatDate = (date) => {
+      if (!date) return '';
+      const dateObj = new Date(date);
+      return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+    };
     const processedCoupons = userCoupons.map(userCoupon => {
       const result = userCoupon.toObject();
       const coupon = result.coupon;
       
+      let status;
       if (result.isUsed) {
-        result.status = 'used';
+        status = 'used';
       } else if (now > coupon.endDate) {
-        result.status = 'expired';
+        status = 'expired';
       } else {
-        result.status = 'valid';
+        status = 'available'; // 修改为小程序期望的状态
       }
       
-      return result;
+      // 返回小程序期望的数据格式
+      return {
+        id: result._id,
+        name: coupon.name,
+        description: coupon.description,
+        price: coupon.amount,
+        condition: coupon.minPurchase,
+        status: status,
+        endDate: formatDate(coupon.endDate),
+        scope: '全场商品可用',
+        isUsed: result.isUsed,
+        usedAt: result.usedAt,
+        createdAt: result.createdAt
+      };
     });
-    
+
     res.status(200).json({
       success: true,
       data: {
         total,
         page: parseInt(page),
         limit: parseInt(limit),
-        userCoupons: processedCoupons
+        coupons: processedCoupons // 修改为小程序期望的字段名
       }
     });
   } catch (error) {
