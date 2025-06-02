@@ -678,6 +678,7 @@ exports.distributeCoupons = async (req, res) => {
 
     // 执行分发
     const distributionResults = [];
+    const couponUsageUpdates = {}; // 记录每个优惠券的使用量增加
     
     for (const user of targetUsers) {
       for (const couponRequest of coupons) {
@@ -698,6 +699,12 @@ exports.distributeCoupons = async (req, res) => {
                 user: user._id,
                 coupon: coupon._id
               });
+
+              // 记录成功分发，累计优惠券使用数量
+              if (!couponUsageUpdates[coupon._id.toString()]) {
+                couponUsageUpdates[coupon._id.toString()] = 0;
+              }
+              couponUsageUpdates[coupon._id.toString()]++;
               
               distributionResults.push({
                 userId: user._id,
@@ -728,6 +735,20 @@ exports.distributeCoupons = async (req, res) => {
             });
           }
         }
+      }
+    }
+
+    // 批量更新优惠券的使用数量
+    for (const [couponId, usageIncrease] of Object.entries(couponUsageUpdates)) {
+      try {
+        await Coupon.findByIdAndUpdate(
+          couponId,
+          { $inc: { usedCount: usageIncrease } },
+          { new: true }
+        );
+        console.log(`更新优惠券 ${couponId} 使用数量，增加 ${usageIncrease} 张`);
+      } catch (error) {
+        console.error(`更新优惠券 ${couponId} 使用数量失败:`, error);
       }
     }
 
