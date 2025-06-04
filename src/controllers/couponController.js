@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Coupon = require('../models/coupon');
 const UserCoupon = require('../models/userCoupon');
 const Cart = require('../models/cart');
@@ -306,6 +307,134 @@ exports.checkCouponCode = async (req, res) => {
     res.status(500).json({
       success: false,
       message: '检查优惠券代码失败',
+      error: error.message
+    });
+  }
+};
+
+// 用户兑换优惠券
+exports.exchangeCoupon = async (req, res) => {
+  try {
+    const { code } = req.body;
+    const userId = req.user.id;
+    
+    if (!code) {
+      return res.status(200).json({
+        success: false,
+        message: '兑换码不能为空'
+      });
+    }
+    
+    // 查找优惠券
+    const coupon = await Coupon.findOne({ 
+      code: code.toUpperCase().trim(),
+      isActive: true 
+    });
+    
+    if (!coupon) {
+      return res.status(200).json({
+        success: false,
+        message: '兑换码无效或优惠券不存在'
+      });
+    }
+    
+    // 检查优惠券是否在有效期内
+    const now = new Date();
+    if (now < coupon.startDate || now > coupon.endDate) {
+      return res.status(200).json({
+        success: false,
+        message: '优惠券已过期或尚未生效'
+      });
+    }
+    
+    // 检查优惠券数量限制
+    if (coupon.limit !== null && coupon.usedCount >= coupon.limit) {
+      return res.status(200).json({
+        success: false,
+        message: '优惠券已被兑换完毕'
+      });
+    }
+    
+    // 检查用户每人限领数量
+    if (coupon.limitPerUser !== null) {
+      const userCouponCount = await UserCoupon.countDocuments({
+        user: userId,
+        coupon: coupon._id
+      });
+      
+      if (userCouponCount >= coupon.limitPerUser) {
+        return res.status(200).json({
+          success: false,
+          message: `每人最多只能兑换${coupon.limitPerUser}张此优惠券`
+        });
+      }
+    }
+    
+    // 检查用户是否已兑换过此优惠券（如果每人限领1张）
+    const existingUserCoupon = await UserCoupon.findOne({
+      user: userId,
+      coupon: coupon._id
+    });
+    
+    if (existingUserCoupon && coupon.limitPerUser === 1) {
+      return res.status(200).json({
+        success: false,
+        message: '您已兑换过此优惠券'
+      });
+    }
+    
+    // 使用事务确保数据一致性
+    const session = await mongoose.startSession();
+    
+    try {
+      await session.withTransaction(async () => {
+        // 创建用户优惠券记录
+        const userCoupon = await UserCoupon.create([{
+          user: userId,
+          coupon: coupon._id,
+          source: 'exchange'
+        }], { session });
+        
+        // 更新优惠券使用次数
+        await Coupon.findByIdAndUpdate(
+          coupon._id,
+          { $inc: { usedCount: 1 } },
+          { session }
+        );
+        
+        res.status(201).json({
+          success: true,
+          message: '优惠券兑换成功',
+          data: {
+            userCoupon: userCoupon[0],
+            coupon: {
+              name: coupon.name,
+              amount: coupon.amount,
+              type: coupon.type,
+              minPurchase: coupon.minPurchase,
+              endDate: coupon.endDate
+            }
+          }
+        });
+      });
+    } finally {
+      await session.endSession();
+    }
+    
+  } catch (error) {
+    console.error('兑换优惠券失败:', error);
+    
+    // 处理并发冲突
+    if (error.code === 11000) {
+      return res.status(200).json({
+        success: false,
+        message: '兑换失败，请稍后重试'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: '兑换优惠券失败',
       error: error.message
     });
   }
@@ -833,4 +962,4 @@ exports.distributeCoupons = async (req, res) => {
       error: error.message
     });
   }
-}; 
+};

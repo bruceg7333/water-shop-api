@@ -52,6 +52,11 @@ const couponSchema = new mongoose.Schema({
     type: Number,
     default: null
   },
+  limitPerUser: {
+    type: Number,
+    default: 1,
+    min: 1
+  },
   usedCount: {
     type: Number,
     default: 0
@@ -104,4 +109,4 @@ couponSchema.methods.calculateDiscount = function(cartTotal) {
 
 const Coupon = mongoose.model('Coupon', couponSchema);
 
-module.exports = Coupon; 
+module.exports = Coupon;

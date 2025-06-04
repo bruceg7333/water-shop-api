@@ -23,6 +23,11 @@ const userCouponSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Order',
     default: null
+  },
+  source: {
+    type: String,
+    enum: ['claim', 'exchange', 'gift', 'promotion'],
+    default: 'claim'
   }
 }, {
   timestamps: true
@@ -33,4 +38,4 @@ userCouponSchema.index({ user: 1, coupon: 1 }, { unique: true });
 
 const UserCoupon = mongoose.model('UserCoupon', userCouponSchema);
 
-module.exports = UserCoupon; 
+module.exports = UserCoupon;
