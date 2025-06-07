@@ -2,6 +2,8 @@ const Order = require('../models/order');
 const Product = require('../models/product');
 const Cart = require('../models/cart');
 const User = require('../models/user');
+const UserCoupon = require('../models/userCoupon');
+const Coupon = require('../models/coupon');
 const mongoose = require('mongoose');
 
 // 创建新订单
@@ -15,7 +17,8 @@ exports.createOrder = async (req, res) => {
       shippingPrice, 
       totalPrice,
       remark,
-      isTestData  // 新增，用于标识是否为测试数据
+      isTestData,  // 新增，用于标识是否为测试数据
+      couponId     // 新增，优惠券ID
     } = req.body;
 
     // 验证订单项是否存在
@@ -74,20 +77,100 @@ exports.createOrder = async (req, res) => {
       });
     }
 
+    // 处理优惠券
+    let usedCoupon = null;
+    let discountAmount = 0;
+    let originalPrice = totalPrice;
+    let finalTotalPrice = totalPrice;
+    let couponInfo = null;
+    
+    if (couponId) {
+      // 查找用户优惠券
+      const userCoupon = await UserCoupon.findOne({
+        _id: couponId,
+        user: req.user.id,
+        isUsed: false
+      }).populate('coupon');
+      
+      if (!userCoupon) {
+        return res.status(400).json({
+          success: false,
+          message: '优惠券不存在或已使用'
+        });
+      }
+      
+      const coupon = userCoupon.coupon;
+      const now = new Date();
+      
+      // 验证优惠券是否有效
+      if (!coupon.isActive || now < coupon.startDate || now > coupon.endDate) {
+        return res.status(400).json({
+          success: false,
+          message: '优惠券已过期或无效'
+        });
+      }
+      
+      // 验证最低消费金额
+      if (coupon.minPurchase && itemsPrice < coupon.minPurchase) {
+        return res.status(400).json({
+          success: false,
+          message: `订单金额不满足优惠券使用条件，最低消费${coupon.minPurchase}元`
+        });
+      }
+      
+      // 计算折扣金额
+      discountAmount = coupon.calculateDiscount(itemsPrice);
+      finalTotalPrice = Math.max(0, totalPrice - discountAmount);
+      
+      // 记录使用的优惠券信息
+      usedCoupon = userCoupon._id;
+      
+      // 记录优惠券详细信息
+      couponInfo = {
+        name: coupon.name,
+        type: coupon.type,
+        amount: coupon.amount,
+        code: coupon.code
+      };
+      
+      // 标记优惠券为已使用
+      userCoupon.isUsed = true;
+      userCoupon.usedAt = new Date();
+    }
+    
     // 创建新订单
-    const order = new Order({
+    const orderData = {
       user: req.user.id,
       orderItems: processedOrderItems,
       shippingAddress,
       paymentMethod,
       itemsPrice,
       shippingPrice,
-      totalPrice,
+      totalPrice: finalTotalPrice,
+      originalPrice,
+      discountAmount,
+      usedCoupon,
       remark
-    });
+    };
+    
+    // 只有在使用优惠券时才添加couponInfo字段
+    if (couponInfo) {
+      orderData.couponInfo = JSON.stringify(couponInfo);
+    }
+    
+    const order = new Order(orderData);
 
     // 保存订单
     const createdOrder = await order.save();
+    
+    // 如果使用了优惠券，保存优惠券使用记录并关联订单
+    if (couponId && usedCoupon) {
+      await UserCoupon.findByIdAndUpdate(couponId, {
+        isUsed: true,
+        usedAt: new Date(),
+        order: createdOrder._id
+      });
+    }
 
     // 如果订单创建成功，可以清空购物车
     await Cart.findOneAndUpdate(
@@ -181,10 +264,10 @@ exports.getOrdersByStatus = async (req, res) => {
       query.status = status;
     }
 
-    const orders = await Order.find(query)
-      .sort({ createdAt: -1 })
-      .populate({
-        path: 'orderItems.product',
+          const orders = await Order.find(query)
+        .sort({ createdAt: -1 })
+        .populate({
+          path: 'orderItems.product',
         select: 'name imageUrl'
       });
 
@@ -235,7 +318,14 @@ exports.getOrderById = async (req, res) => {
     
     // 如果ID是有效的ObjectId，则使用findById查询
     if (mongoose.Types.ObjectId.isValid(orderId)) {
-      order = await Order.findById(orderId);
+      order = await Order.findById(orderId)
+        .populate('orderItems.product')
+        .populate({
+          path: 'usedCoupon',
+          populate: {
+            path: 'coupon'
+          }
+        });
     } else {
       // 如果不是有效的ObjectId（可能是数字ID），尝试使用自定义ID查询
       // 这主要用于演示环境
@@ -248,24 +338,42 @@ exports.getOrderById = async (req, res) => {
             success: true,
             data: { 
               order: {
+                _id: numericId,
                 id: numericId,
                 orderNumber: `2024050${numericId}0001`,
                 status: 'completed',
-                createTime: '2024-05-01 10:30',
+                createdAt: '2024-05-01T10:30:45.000Z',
+                paidAt: '2024-05-01T10:35:20.000Z',
+                deliveredAt: '2024-05-02T14:20:15.000Z',
+                completedAt: '2024-05-03T09:45:30.000Z',
                 user: req.user.id, // 确保当前用户是订单所有者
-                totalAmount: 22.00,
-                shippingFee: 5.00,
-                totalCount: 2,
-                goods: [
+                totalPrice: 22.00,
+                shippingPrice: 5.00,
+                itemsPrice: 17.00,
+                discountAmount: 0,
+                paymentMethod: '微信支付',
+                orderItems: [
                   {
-                    id: 1,
+                    _id: '1',
                     name: 'SPRINKLE 纯净水',
-                    spec: '550ml',
+                    quantity: 2,
                     price: 8.50,
-                    count: 2,
-                    imageUrl: '/static/images/products/water1.jpg'
+                    image: '/static/images/products/water1.jpg',
+                    product: {
+                      _id: '1',
+                      name: 'SPRINKLE 纯净水',
+                      imageUrl: '/static/images/products/water1.jpg'
+                    }
                   }
-                ]
+                ],
+                shippingAddress: {
+                  name: '张三',
+                  phone: '13800138000',
+                  province: '江苏省',
+                  city: '南京市',
+                  district: '鼓楼区',
+                  address: '中山路123号'
+                }
               }
             }
           });
@@ -294,9 +402,21 @@ exports.getOrderById = async (req, res) => {
       });
     }
 
+    // 将订单转换为普通对象，避免意外修改Mongoose文档
+    const orderData = order.toObject();
+
+    // 解析优惠券信息到新对象上，不修改原始文档
+    if (orderData.couponInfo) {
+      try {
+        orderData.parsedCouponInfo = JSON.parse(orderData.couponInfo);
+      } catch (error) {
+        console.error('解析优惠券信息失败:', error);
+      }
+    }
+
     res.status(200).json({
       success: true,
-      data: { order }
+      data: { order: orderData }
     });
   } catch (error) {
     console.error('获取订单详情失败:', error);
@@ -426,6 +546,65 @@ exports.updateOrderToDelivered = async (req, res) => {
   }
 };
 
+// 管理员更新订单状态为已完成
+exports.updateOrderToCompleted = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    
+    // 检查ID格式是否有效
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: '无效的订单ID格式'
+      });
+    }
+    
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: '订单不存在'
+      });
+    }
+
+    // 验证用户权限(仅管理员可以标记为已完成)
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: '无权限修改该订单'
+      });
+    }
+
+    // 验证订单是否已发货
+    if (!order.isDelivered) {
+      return res.status(400).json({
+        success: false,
+        message: '订单尚未发货，无法标记为已完成'
+      });
+    }
+
+    // 更新订单状态
+    order.status = 'completed';
+    order.completedAt = Date.now();
+
+    const updatedOrder = await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: '订单已标记为已完成',
+      data: { order: updatedOrder }
+    });
+  } catch (error) {
+    console.error('更新订单完成状态失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '更新订单完成状态失败',
+      error: error.message
+    });
+  }
+};
+
 // 更新订单状态为已收货
 exports.confirmReceipt = async (req, res) => {
   try {
@@ -434,7 +613,14 @@ exports.confirmReceipt = async (req, res) => {
     
     // 如果ID是有效的ObjectId，则使用findById查询
     if (mongoose.Types.ObjectId.isValid(orderId)) {
-      order = await Order.findById(orderId);
+      order = await Order.findById(orderId)
+        .populate('orderItems.product')
+        .populate({
+          path: 'usedCoupon',
+          populate: {
+            path: 'coupon'
+          }
+        });
     } else {
       // 如果不是有效的ObjectId（可能是数字ID），尝试使用自定义ID查询
       // 这主要用于演示环境
@@ -481,6 +667,7 @@ exports.confirmReceipt = async (req, res) => {
 
     // 更新订单状态
     order.status = 'completed';
+    order.completedAt = Date.now();
 
     const updatedOrder = await order.save();
 
@@ -507,7 +694,14 @@ exports.cancelOrder = async (req, res) => {
     
     // 如果ID是有效的ObjectId，则使用findById查询
     if (mongoose.Types.ObjectId.isValid(orderId)) {
-      order = await Order.findById(orderId);
+      order = await Order.findById(orderId)
+        .populate('orderItems.product')
+        .populate({
+          path: 'usedCoupon',
+          populate: {
+            path: 'coupon'
+          }
+        });
     } else {
       // 如果不是有效的ObjectId（可能是数字ID），尝试使用自定义ID查询
       // 这主要用于演示环境
@@ -637,6 +831,10 @@ exports.getAllOrders = async (req, res) => {
     // 分页查询
     const orders = await Order.find(query)
       .populate('user', 'id username')
+      .populate({
+        path: 'orderItems.product',
+        select: 'name imageUrl'
+      })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
@@ -665,7 +863,13 @@ exports.getOrder = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate('user', 'id username')
-      .populate('orderItems.product');
+      .populate('orderItems.product')
+      .populate({
+        path: 'usedCoupon',
+        populate: {
+          path: 'coupon'
+        }
+      });
     
     if (!order) {
       return res.status(404).json({
@@ -674,9 +878,21 @@ exports.getOrder = async (req, res) => {
       });
     }
     
+    // 将订单转换为普通对象，避免意外修改Mongoose文档
+    const orderData = order.toObject();
+    
+    // 解析优惠券信息到新对象上，不修改原始文档
+    if (orderData.couponInfo) {
+      try {
+        orderData.parsedCouponInfo = JSON.parse(orderData.couponInfo);
+      } catch (error) {
+        console.error('解析优惠券信息失败:', error);
+      }
+    }
+    
     res.status(200).json({
       success: true,
-      data: order
+      data: orderData
     });
   } catch (error) {
     console.error('获取订单详情失败:', error);
@@ -688,10 +904,10 @@ exports.getOrder = async (req, res) => {
   }
 };
 
-// 管理员更新订单状态
+  // 管理员更新订单状态
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, remark } = req.body;
     
     if (!status) {
       return res.status(400).json({
@@ -709,24 +925,35 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
     
+    // 记录原始状态，只有状态真正改变时才更新时间戳
+    const originalStatus = order.status;
+    
     // 更新订单状态
     order.status = status;
     
-    // 如果状态是已支付，设置支付相关字段
-    if (status === 'pending_shipment' && !order.isPaid) {
-      order.isPaid = true;
-      order.paidAt = Date.now();
+    // 如果有备注更新，更新备注
+    if (remark !== undefined) {
+      order.remark = remark;
     }
     
-    // 如果状态是已发货，设置发货相关字段
-    if (status === 'pending_receipt' && !order.isDelivered) {
-      order.isDelivered = true;
-      order.deliveredAt = Date.now();
-    }
-    
-    // 如果状态是已取消，设置取消时间
-    if (status === 'canceled' && !order.canceledAt) {
-      order.canceledAt = Date.now();
+    // 只有当状态真正改变时才更新时间戳
+    if (originalStatus !== status) {
+      // 如果状态变为已支付，设置支付相关字段
+      if (status === 'pending_shipment' && !order.isPaid) {
+        order.isPaid = true;
+        order.paidAt = Date.now();
+      }
+      
+      // 如果状态变为已发货，设置发货相关字段
+      if (status === 'pending_receipt' && !order.isDelivered) {
+        order.isDelivered = true;
+        order.deliveredAt = Date.now();
+      }
+      
+      // 如果状态变为已取消，设置取消时间
+      if (status === 'canceled' && !order.canceledAt) {
+        order.canceledAt = Date.now();
+      }
     }
     
     const updatedOrder = await order.save();
@@ -754,7 +981,14 @@ exports.buyAgain = async (req, res) => {
     
     // 如果ID是有效的ObjectId，则使用findById查询
     if (mongoose.Types.ObjectId.isValid(orderId)) {
-      order = await Order.findById(orderId).populate('orderItems.product');
+      order = await Order.findById(orderId)
+        .populate('orderItems.product')
+        .populate({
+          path: 'usedCoupon',
+          populate: {
+            path: 'coupon'
+          }
+        });
     } else {
       // 如果不是有效的ObjectId（可能是数字ID），尝试使用自定义ID查询
       // 这主要用于演示环境
@@ -856,7 +1090,14 @@ exports.deleteOrder = async (req, res) => {
     
     // 如果ID是有效的ObjectId，则使用findById查询
     if (mongoose.Types.ObjectId.isValid(orderId)) {
-      order = await Order.findById(orderId);
+      order = await Order.findById(orderId)
+        .populate('orderItems.product')
+        .populate({
+          path: 'usedCoupon',
+          populate: {
+            path: 'coupon'
+          }
+        });
     } else {
       // 如果不是有效的ObjectId（可能是数字ID），尝试使用自定义ID查询
       // 这主要用于演示环境

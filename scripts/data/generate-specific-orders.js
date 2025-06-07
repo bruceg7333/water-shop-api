@@ -11,9 +11,9 @@
 
 // 导入依赖模块
 const mongoose = require('mongoose');
-const User = require('../src/models/user');
-const Product = require('../src/models/product');
-const Order = require('../src/models/order');
+const User = require('../../src/models/user');
+const Product = require('../../src/models/product');
+const Order = require('../../src/models/order');
 
 // MongoDB连接
 mongoose.connect('mongodb://localhost:27017/water-shop', {

@@ -42,7 +42,7 @@ const orderSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['微信支付', '支付宝', '货到付款'],
+    enum: ['微信支付', '货到付款'],
     default: '微信支付'
   },
   paymentResult: {
@@ -66,6 +66,25 @@ const orderSchema = new mongoose.Schema({
     required: true,
     default: 0.0
   },
+  // 优惠券相关字段
+  usedCoupon: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'UserCoupon',
+    default: null
+  },
+  // 优惠券信息 - 存储为JSON字符串
+  couponInfo: {
+    type: String,
+    default: null
+  },
+  discountAmount: {
+    type: Number,
+    default: 0
+  },
+  originalPrice: {
+    type: Number,
+    default: 0
+  },
   isPaid: {
     type: Boolean,
     required: true,
@@ -78,6 +97,7 @@ const orderSchema = new mongoose.Schema({
     default: false
   },
   deliveredAt: Date,
+  completedAt: Date,
   canceledAt: Date,
   status: {
     type: String,
