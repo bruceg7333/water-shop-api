@@ -351,11 +351,12 @@ exports.getTempCart = async (req, res) => {
       };
     }).filter(Boolean); // 过滤掉null项
     
-    // 计算总价和总数量
-    const totalPrice = populatedCartItems.reduce(
+    // 计算总价和总数量，修复浮点数精度问题
+    const rawTotalPrice = populatedCartItems.reduce(
       (sum, item) => sum + (item.price * item.quantity), 
       0
     );
+    const totalPrice = Math.round(rawTotalPrice * 100) / 100;
     
     const totalItems = populatedCartItems.reduce(
       (sum, item) => sum + item.quantity, 

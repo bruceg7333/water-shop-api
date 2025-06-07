@@ -1,7 +1,7 @@
  
 const mongoose = require('mongoose');
-const Administrator = require('./src/models/Administrator');
-const connectDB = require('./src/config/database');
+const Administrator = require('../src/models/Administrator');
+const connectDB = require('../src/config/database');
 
 // 恢复超级管理员状态
 const restoreSuperAdmin = async () => {

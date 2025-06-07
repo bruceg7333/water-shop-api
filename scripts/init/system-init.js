@@ -47,11 +47,11 @@ class SystemInitializer {
       const superAdmin = new User({
         username: 'superadmin',
         password: hashedPassword,
-        nickName: '超级管理员',
+        nickName: '潇湘夜雨',
         role: 'admin',
         isActive: true,
         avatar: '/assets/images/avatar/admin.png',
-        phone: '13800000000',
+        phone: '15895895014',
         gender: '未知',
         points: 0,
         createdAt: new Date(),

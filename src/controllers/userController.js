@@ -800,7 +800,9 @@ exports.getUserDetail = async (req, res) => {
       { $group: { _id: null, total: { $sum: '$totalPrice' } } }
     ]);
     
-    const totalAmount = totalConsumption.length > 0 ? totalConsumption[0].total : 0;
+    // 修复浮点数精度问题，保留两位小数
+    const rawTotal = totalConsumption.length > 0 ? totalConsumption[0].total : 0;
+    const totalAmount = Math.round(rawTotal * 100) / 100;
     
     // 获取用户的优惠券信息（如果有优惠券模型）
     let userCoupons = [];
@@ -811,6 +813,16 @@ exports.getUserDetail = async (req, res) => {
         .sort({ createdAt: -1 });
     } catch (error) {
       console.log('优惠券模型不存在或查询失败:', error.message);
+    }
+    
+    // 获取用户的地址信息
+    let addresses = [];
+    try {
+      const Address = require('../models/address');
+      addresses = await Address.find({ user: userId })
+        .sort({ isDefault: -1, createdAt: -1 }); // 默认地址排在前面
+    } catch (error) {
+      console.log('地址模型不存在或查询失败:', error.message);
     }
     
     // 计算会员等级（基于消费金额）
@@ -828,7 +840,7 @@ exports.getUserDetail = async (req, res) => {
       orders: orders.map(order => ({
         id: order._id,
         orderNumber: order.orderNumber,
-        totalPrice: order.totalPrice,
+        totalPrice: Math.round((order.totalPrice || 0) * 100) / 100,
         status: order.status,
         isPaid: order.isPaid,
         isDelivered: order.isDelivered,
@@ -843,6 +855,20 @@ exports.getUserDetail = async (req, res) => {
         usedAt: uc.usedAt,
         isUsed: uc.isUsed,
         createdAt: uc.createdAt
+      })),
+      addresses: addresses.map(addr => ({
+        id: addr._id,
+        name: addr.name,
+        phone: addr.phone,
+        province: addr.province,
+        city: addr.city,
+        district: addr.district,
+        detail: addr.detail,
+        address: addr.detail, // 兼容前端的address字段
+        tag: addr.tag,
+        isDefault: addr.isDefault,
+        createdAt: addr.createdAt,
+        updatedAt: addr.updatedAt
       }))
     };
     
@@ -904,4 +930,4 @@ exports.deleteUsers = async (req, res) => {
       error: error.message
     });
   }
-}; 
+};

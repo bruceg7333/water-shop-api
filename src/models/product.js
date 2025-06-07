@@ -15,6 +15,10 @@ const productSchema = new mongoose.Schema({
     required: [true, '商品价格不能为空'],
     min: 0
   },
+  originalPrice: {
+    type: Number,
+    min: 0
+  },
   imageUrl: {
     type: String,
     required: [true, '商品图片不能为空']

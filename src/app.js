@@ -20,6 +20,13 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
+// 自定义请求日志中间件
+app.use((req, res, next) => {
+  console.log(`Incoming Request: ${req.method} ${req.url}`);
+  console.log('Request Body:', req.body);
+  next();
+});
+
 // 静态文件服务
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
@@ -103,4 +110,4 @@ app.listen(PORT, () => {
   console.log(`服务器运行在: http://localhost:${PORT}`);
 });
 
-module.exports = app; 
+module.exports = app;

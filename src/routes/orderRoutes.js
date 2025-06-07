@@ -18,5 +18,6 @@ router.delete('/:id', protect, orderController.deleteOrder);
 // 管理员路由
 router.get('/', protect, authorize('admin'), orderController.getAllOrders);
 router.put('/:id/deliver', protect, authorize('admin'), orderController.updateOrderToDelivered);
+router.put('/:id/complete', protect, authorize('admin'), orderController.updateOrderToCompleted);
 
 module.exports = router; 

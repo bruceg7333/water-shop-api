@@ -48,6 +48,10 @@ router.get('/orders', authorize('order_view'), orderController.getAllOrders);
 router.get("/orders/latest", authorize('order_view'), orderController.getLatestOrders);
 router.get('/orders/:id', authorize('order_view'), orderController.getOrder);
 router.put('/orders/:id/status', authorize('order_edit'), orderController.updateOrderStatus);
+router.put('/orders/:id/deliver', authorize('order_edit'), orderController.updateOrderToDelivered);
+router.put('/orders/:id/complete', authorize('order_edit'), orderController.updateOrderToCompleted);
+router.put('/orders/:id/pay', authorize('order_edit'), orderController.updateOrderToPaid);
+router.put('/orders/:id/cancel', authorize('order_edit'), orderController.cancelOrder);
 
 // 优惠券管理路由
 router.get('/coupons', authorize('product_view'), couponController.getCoupons);

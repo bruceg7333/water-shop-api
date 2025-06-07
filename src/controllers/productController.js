@@ -1,5 +1,6 @@
 const Product = require('../models/product');
 const Review = require('../models/review'); // 添加评论模型引用
+const Order = require('../models/order'); // 添加订单模型引用
 const XLSX = require('xlsx'); // 添加Excel处理库
 const path = require('path');
 const fs = require('fs');
@@ -22,21 +23,67 @@ exports.getProducts = async (req, res) => {
       query.tag = tag;
     }
     
-    // 排序选项
+    // 查询总数
+    const total = await Product.countDocuments(query);
+    
+    // 如果是按销量排序，需要特殊处理
+    if (sort === 'sales') {
+      // 先获取所有商品并计算销量，然后再排序分页
+      const allProducts = await Product.find(query);
+      
+      // 计算每个商品的实际销量
+      const productsWithRealSales = await Promise.all(
+        allProducts.map(async (product) => {
+          const salesData = await Order.aggregate([
+            { $match: { isPaid: true } },
+            { $unwind: '$orderItems' },
+            { $match: { 'orderItems.product': product._id } },
+            { $group: {
+                _id: null,
+                totalSales: { $sum: '$orderItems.quantity' }
+              }
+            }
+          ]);
+          
+          const realSales = salesData.length > 0 ? salesData[0].totalSales : 0;
+          
+          return {
+            ...product.toObject(),
+            sales: realSales
+          };
+        })
+      );
+      
+      // 按实际销量降序排序
+      productsWithRealSales.sort((a, b) => b.sales - a.sales);
+      
+      // 手动分页
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + parseInt(limit);
+      const paginatedProducts = productsWithRealSales.slice(startIndex, endIndex);
+      
+      res.status(200).json({
+        success: true,
+        data: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          products: paginatedProducts
+        }
+      });
+      return;
+    }
+    
+    // 非销量排序的常规处理
     let sortOption = {};
     if (sort === 'price_asc') {
       sortOption = { price: 1 };
     } else if (sort === 'price_desc') {
       sortOption = { price: -1 };
-    } else if (sort === 'sales') {
-      sortOption = { sales: -1 };
     } else {
       // 默认按创建时间降序
       sortOption = { createdAt: -1 };
     }
-    
-    // 查询总数
-    const total = await Product.countDocuments(query);
     
     // 分页查询
     const products = await Product.find(query)
@@ -44,13 +91,38 @@ exports.getProducts = async (req, res) => {
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
     
+    // 计算每个商品的实际销量（基于已支付订单）
+    const productsWithRealSales = await Promise.all(
+      products.map(async (product) => {
+        // 聚合查询该商品在所有已支付订单中的销量
+        const salesData = await Order.aggregate([
+          { $match: { isPaid: true } },
+          { $unwind: '$orderItems' },
+          { $match: { 'orderItems.product': product._id } },
+          { $group: {
+              _id: null,
+              totalSales: { $sum: '$orderItems.quantity' }
+            }
+          }
+        ]);
+        
+        const realSales = salesData.length > 0 ? salesData[0].totalSales : 0;
+        
+        // 返回包含实际销量的商品数据
+        return {
+          ...product.toObject(),
+          sales: realSales
+        };
+      })
+    );
+    
     res.status(200).json({
       success: true,
       data: {
         total,
         page: parseInt(page),
         limit: parseInt(limit),
-        products
+        products: productsWithRealSales
       }
     });
   } catch (error) {
@@ -124,12 +196,67 @@ exports.getProductsForAdmin = async (req, res) => {
       }
     }
     
-    // 排序选项
+    console.log('管理员商品查询条件:', query);
+    console.log('排序字段:', sortBy, '排序方向:', sortOrder);
+    
+    // 查询总数
+    const total = await Product.countDocuments(query);
+    
+    // 如果是按销量排序，需要特殊处理
+    if (sortBy === 'sales') {
+      // 先获取所有商品并计算销量，然后再排序分页
+      const allProducts = await Product.find(query);
+      
+      // 计算每个商品的实际销量
+      const productsWithRealSales = await Promise.all(
+        allProducts.map(async (product) => {
+          const salesData = await Order.aggregate([
+            { $match: { isPaid: true } },
+            { $unwind: '$orderItems' },
+            { $match: { 'orderItems.product': product._id } },
+            { $group: {
+                _id: null,
+                totalSales: { $sum: '$orderItems.quantity' }
+              }
+            }
+          ]);
+          
+          const realSales = salesData.length > 0 ? salesData[0].totalSales : 0;
+          
+          return {
+            ...product.toObject(),
+            sales: realSales
+          };
+        })
+      );
+      
+      // 按实际销量排序
+      const sortOrderValue = sortOrder === 'asc' ? 1 : -1;
+      productsWithRealSales.sort((a, b) => (a.sales - b.sales) * sortOrderValue);
+      
+      // 手动分页
+      const startIndex = (page - 1) * pageSize;
+      const endIndex = startIndex + parseInt(pageSize);
+      const paginatedProducts = productsWithRealSales.slice(startIndex, endIndex);
+      
+      res.status(200).json({
+        success: true,
+        data: {
+          total,
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          products: paginatedProducts
+        }
+      });
+      return;
+    }
+    
+    // 非销量排序的常规处理
     let sortOption = {};
     const sortOrderValue = sortOrder === 'asc' ? 1 : -1;
     
     // 支持的排序字段
-    const allowedSortFields = ['name', 'price', 'stock', 'sales', 'createdAt'];
+    const allowedSortFields = ['name', 'price', 'stock', 'createdAt'];
     if (allowedSortFields.includes(sortBy)) {
       sortOption[sortBy] = sortOrderValue;
     } else {
@@ -137,17 +264,36 @@ exports.getProductsForAdmin = async (req, res) => {
       sortOption = { createdAt: -1 };
     }
     
-    console.log('管理员商品查询条件:', query);
-    console.log('排序选项:', sortOption);
-    
-    // 查询总数
-    const total = await Product.countDocuments(query);
-    
     // 分页查询
     const products = await Product.find(query)
       .sort(sortOption)
       .skip((page - 1) * pageSize)
       .limit(parseInt(pageSize));
+    
+    // 计算每个商品的实际销量（基于已支付订单）
+    const productsWithRealSales = await Promise.all(
+      products.map(async (product) => {
+        // 聚合查询该商品在所有已支付订单中的销量
+        const salesData = await Order.aggregate([
+          { $match: { isPaid: true } },
+          { $unwind: '$orderItems' },
+          { $match: { 'orderItems.product': product._id } },
+          { $group: {
+              _id: null,
+              totalSales: { $sum: '$orderItems.quantity' }
+            }
+          }
+        ]);
+        
+        const realSales = salesData.length > 0 ? salesData[0].totalSales : 0;
+        
+        // 返回包含实际销量的商品数据
+        return {
+          ...product.toObject(),
+          sales: realSales
+        };
+      })
+    );
     
     res.status(200).json({
       success: true,
@@ -155,7 +301,7 @@ exports.getProductsForAdmin = async (req, res) => {
         total,
         page: parseInt(page),
         pageSize: parseInt(pageSize),
-        products
+        products: productsWithRealSales
       }
     });
   } catch (error) {
@@ -458,10 +604,38 @@ exports.searchProducts = async (req, res) => {
 // 获取热销商品（销量前3）
 exports.getHotProducts = async (req, res) => {
   try {
-    // 查询销量最高的前3个商品
-    const hotProducts = await Product.find({ isActive: true })
-      .sort({ sales: -1 })
-      .limit(3);
+    // 获取所有上架商品
+    const allProducts = await Product.find({ isActive: true });
+    
+    // 计算每个商品的实际销量（基于已支付订单）
+    const productsWithRealSales = await Promise.all(
+      allProducts.map(async (product) => {
+        // 聚合查询该商品在所有已支付订单中的销量
+        const salesData = await Order.aggregate([
+          { $match: { isPaid: true } },
+          { $unwind: '$orderItems' },
+          { $match: { 'orderItems.product': product._id } },
+          { $group: {
+              _id: null,
+              totalSales: { $sum: '$orderItems.quantity' }
+            }
+          }
+        ]);
+        
+        const realSales = salesData.length > 0 ? salesData[0].totalSales : 0;
+        
+        // 返回包含实际销量的商品数据
+        return {
+          ...product.toObject(),
+          sales: realSales
+        };
+      })
+    );
+    
+    // 按实际销量降序排序，取前3个
+    const hotProducts = productsWithRealSales
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 3);
     
     res.status(200).json({
       success: true,
@@ -559,6 +733,7 @@ exports.downloadImportTemplate = async (req, res) => {
         '商品名称*': 'SPRINKLE 纯净水',
         '商品描述*': '来自高山冰川，纯净甘甜，适合全家饮用',
         '价格*': 2.50,
+        '原价': 3.13,
         '库存*': 100,
         '分类*': '纯净水',
         '标签': '热销',
@@ -571,6 +746,7 @@ exports.downloadImportTemplate = async (req, res) => {
         '商品名称*': 'SPRINKLE 矿泉水',
         '商品描述*': '富含天然矿物质，口感清爽，健康之选',
         '价格*': 3.00,
+        '原价': '',
         '库存*': 80,
         '分类*': '矿泉水',
         '标签': '优惠',
@@ -592,6 +768,7 @@ exports.downloadImportTemplate = async (req, res) => {
       { wch: 20 }, // 商品名称
       { wch: 40 }, // 商品描述
       { wch: 10 }, // 价格
+      { wch: 10 }, // 原价
       { wch: 10 }, // 库存
       { wch: 15 }, // 分类
       { wch: 10 }, // 标签
@@ -609,6 +786,7 @@ exports.downloadImportTemplate = async (req, res) => {
       { '字段名称': '商品名称*', '说明': '必填，商品的名称，长度2-50字符', '示例': 'SPRINKLE 纯净水' },
       { '字段名称': '商品描述*', '说明': '必填，商品的详细描述', '示例': '来自高山冰川，纯净甘甜' },
       { '字段名称': '价格*', '说明': '必填，商品价格，必须大于0', '示例': '2.50' },
+      { '字段名称': '原价', '说明': '可选，商品原价，用于显示划线价格，留空则不显示', '示例': '3.13' },
       { '字段名称': '库存*', '说明': '必填，商品库存数量，必须大于等于0', '示例': '100' },
       { '字段名称': '分类*', '说明': '必填，商品分类', '示例': '纯净水、矿泉水、气泡水等' },
       { '字段名称': '标签', '说明': '可选，商品标签', '示例': '热销、新品、优惠、限量' },
@@ -762,6 +940,15 @@ exports.importProducts = async (req, res) => {
         product.isActive = row['是否上架'] === '否' ? false : true;
         product.rating = parseFloat(row['评分']) || 0;
         product.ratingsCount = parseInt(row['评分数量']) || 0;
+        
+        // 处理原价字段
+        const originalPriceValue = row['原价'];
+        if (originalPriceValue && originalPriceValue !== '') {
+          const originalPrice = parseFloat(originalPriceValue);
+          if (!isNaN(originalPrice) && originalPrice > 0) {
+            product.originalPrice = originalPrice;
+          }
+        }
         
         // 验证评分范围
         if (product.rating < 0 || product.rating > 5) {

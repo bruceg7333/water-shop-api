@@ -118,9 +118,9 @@ exports.createOrder = async (req, res) => {
         });
       }
       
-      // 计算折扣金额
-      discountAmount = coupon.calculateDiscount(itemsPrice);
-      finalTotalPrice = Math.max(0, totalPrice - discountAmount);
+      // 计算折扣金额，修复浮点数精度问题
+      discountAmount = Math.round(coupon.calculateDiscount(itemsPrice) * 100) / 100;
+      finalTotalPrice = Math.round(Math.max(0, totalPrice - discountAmount) * 100) / 100;
       
       // 记录使用的优惠券信息
       usedCoupon = userCoupon._id;

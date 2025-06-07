@@ -44,11 +44,12 @@ const cartSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// 自动计算购物车总价和总数量
+// 自动计算购物车总价和总数量，修复浮点数精度问题
 cartSchema.pre('save', function(next) {
   if (this.items && this.items.length > 0) {
-    this.totalPrice = this.items.reduce((sum, item) => 
+    const rawTotalPrice = this.items.reduce((sum, item) => 
       sum + (item.selected ? (item.price * item.quantity) : 0), 0);
+    this.totalPrice = Math.round(rawTotalPrice * 100) / 100;
     this.totalItems = this.items.reduce((sum, item) => 
       sum + (item.selected ? item.quantity : 0), 0);
   } else {
