@@ -133,7 +133,8 @@ administratorSchema.methods.getRolePermissions = function() {
       'order_view', 'order_edit', 'order_delete',
       'banner_read', 'banner_create', 'banner_update', 'banner_delete',
       'content_read', 'content_create', 'content_update', 'content_delete',
-      'statistics_view'
+      'statistics_view',
+      'admin_manage'
     ],
     operator: [
       'user_view',

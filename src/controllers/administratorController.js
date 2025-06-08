@@ -1,4 +1,4 @@
-const Administrator = require('../models/Administrator');
+const Administrator = require('../models/administrator');
 const { generateToken } = require('../utils/jwt');
 const mongoose = require('mongoose');
 
@@ -150,18 +150,55 @@ exports.getAllAdministrators = async (req, res) => {
     // 构建查询条件
     const query = {};
     
+    // 根据用户角色限制查询范围
+    if (req.user.role === 'super_admin') {
+      // 超级管理员可以看到所有账号
+      // 不添加额外限制
+    } else if (req.user.role === 'admin') {
+      // 管理员只能看到自己创建的操作员账号
+      query.$or = [
+        { createdBy: req.user.id }, // 自己创建的账号
+        { _id: req.user.id } // 自己的账号
+      ];
+      query.role = { $in: ['admin', 'operator'] }; // 管理员不能看到超级管理员
+    } else {
+      // 其他角色无权查看
+      return res.status(403).json({
+        success: false,
+        message: '权限不足，无法访问此资源'
+      });
+    }
+    
     // 模糊搜索（用户名、真实姓名、邮箱）
     if (search) {
-      query.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { realName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
-      ];
+      const searchCondition = {
+        $or: [
+          { username: { $regex: search, $options: 'i' } },
+          { realName: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } }
+        ]
+      };
+      
+      // 如果已有查询条件，需要合并
+      if (query.$or) {
+        query.$and = [
+          { $or: query.$or },
+          searchCondition
+        ];
+        delete query.$or;
+      } else {
+        Object.assign(query, searchCondition);
+      }
     }
     
     // 角色筛选
     if (role && role !== '') {
-      query.role = role;
+      if (query.role && query.role.$in) {
+        // 如果已有角色限制，取交集
+        query.role = role;
+      } else {
+        query.role = role;
+      }
     }
     
     // 状态筛选
@@ -172,6 +209,9 @@ exports.getAllAdministrators = async (req, res) => {
     // 构建排序条件
     const sortCondition = {};
     sortCondition[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    
+    console.log('🔍 查询条件:', JSON.stringify(query, null, 2));
+    console.log('🔍 当前用户:', req.user.role, req.user.id);
     
     // 查询总数
     const total = await Administrator.countDocuments(query);
@@ -222,11 +262,21 @@ exports.createAdministrator = async (req, res) => {
       });
     }
     
-    // 检查权限：只有super_admin可以创建super_admin
-    if (role === 'super_admin' && req.user.role !== 'super_admin') {
+    // 检查权限：
+    // 1. 只有超级管理员可以创建超级管理员（但现在不允许创建新的超级管理员）
+    // 2. 超级管理员可以创建管理员和操作员
+    // 3. 管理员只能创建操作员
+    if (role === 'super_admin') {
       return res.status(403).json({
         success: false,
-        message: '权限不足，无法创建超级管理员'
+        message: '不允许创建新的超级管理员'
+      });
+    }
+    
+    if (role === 'admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({
+        success: false,
+        message: '只有超级管理员可以创建管理员账号'
       });
     }
     
@@ -295,14 +345,45 @@ exports.updateAdministrator = async (req, res) => {
       });
     }
     
-    // 权限检查：不能修改比自己权限高的用户
-    if (req.user.role !== 'super_admin') {
-      if (administrator.role === 'super_admin' || role === 'super_admin') {
+    // 权限检查
+    if (req.user.role === 'super_admin') {
+      // 超级管理员不能修改其他超级管理员的角色
+      if (administrator.role === 'super_admin' && role && role !== 'super_admin') {
         return res.status(403).json({
           success: false,
-          message: '权限不足'
+          message: '不能修改超级管理员的角色'
         });
       }
+      // 不允许提升为超级管理员
+      if (role === 'super_admin' && administrator.role !== 'super_admin') {
+        return res.status(403).json({
+          success: false,
+          message: '不允许提升为超级管理员'
+        });
+      }
+    } else if (req.user.role === 'admin') {
+      // 管理员只能修改自己创建的操作员，且不能修改自己的账号（除了自己的个人信息）
+      if (administrator._id.toString() !== req.user.id) {
+        if (administrator.role !== 'operator' || administrator.createdBy?.toString() !== req.user.id) {
+          return res.status(403).json({
+            success: false,
+            message: '只能修改自己创建的操作员账号'
+          });
+        }
+      }
+      // 管理员不能修改角色
+      if (role && role !== administrator.role) {
+        return res.status(403).json({
+          success: false,
+          message: '管理员不能修改用户角色'
+        });
+      }
+    } else {
+      // 其他角色无权修改
+      return res.status(403).json({
+        success: false,
+        message: '权限不足'
+      });
     }
     
     // 不能禁用自己
@@ -380,11 +461,28 @@ exports.deleteAdministrator = async (req, res) => {
       });
     }
     
-    // 权限检查：不能删除比自己权限高的用户
-    if (req.user.role !== 'super_admin' && administrator.role === 'super_admin') {
+    // 权限检查
+    if (req.user.role === 'super_admin') {
+      // 超级管理员不能删除其他超级管理员
+      if (administrator.role === 'super_admin') {
+        return res.status(403).json({
+          success: false,
+          message: '不能删除其他超级管理员'
+        });
+      }
+    } else if (req.user.role === 'admin') {
+      // 管理员只能删除自己创建的操作员
+      if (administrator.role !== 'operator' || administrator.createdBy?.toString() !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: '只能删除自己创建的操作员账号'
+        });
+      }
+    } else {
+      // 其他角色无权删除
       return res.status(403).json({
         success: false,
-        message: '权限不足，无法删除超级管理员'
+        message: '权限不足'
       });
     }
     
@@ -409,13 +507,29 @@ exports.updateAdminPassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     
+    // 验证新密码格式
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: '新密码不能少于8位'
+      });
+    }
+    
+    // 验证密码必须包含字母和数字
+    if (!/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]+$/.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message: '密码必须由字母和数字组成'
+      });
+    }
+    
     // 获取操作员信息（包含密码）
     const admin = await Administrator.findById(req.user.id).select('+password');
     
     // 验证当前密码
     const isMatch = await admin.matchPassword(currentPassword);
     if (!isMatch) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
         message: '当前密码不正确'
       });
@@ -439,11 +553,19 @@ exports.updateAdminPassword = async (req, res) => {
   }
 };
 
-// 重置操作员密码（需要admin_manage权限）
+// 重置操作员密码（只有超级管理员可以重置密码）
 exports.resetAdminPassword = async (req, res) => {
   try {
     const { id } = req.params;
     const { newPassword } = req.body;
+    
+    // 只有超级管理员可以重置密码
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({
+        success: false,
+        message: '只有超级管理员可以重置密码'
+      });
+    }
     
     if (!newPassword) {
       return res.status(400).json({
@@ -460,11 +582,19 @@ exports.resetAdminPassword = async (req, res) => {
       });
     }
     
-    // 权限检查
-    if (req.user.role !== 'super_admin' && administrator.role === 'super_admin') {
+    // 不能重置自己的密码（应该使用修改密码功能）
+    if (administrator._id.toString() === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        message: '不能重置自己的密码，请使用修改密码功能'
+      });
+    }
+    
+    // 不能重置其他超级管理员的密码
+    if (administrator.role === 'super_admin') {
       return res.status(403).json({
         success: false,
-        message: '权限不足'
+        message: '不能重置其他超级管理员的密码'
       });
     }
     

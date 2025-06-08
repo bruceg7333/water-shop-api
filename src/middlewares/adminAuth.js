@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const Administrator = require('../models/Administrator');
+const Administrator = require('../models/administrator');
 const config = require('../config/config');
 
 // 管理员身份验证中间件
