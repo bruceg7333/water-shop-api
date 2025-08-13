@@ -7,6 +7,7 @@
     "dev": "nodemon src/app.js",
     "seed": "node src/utils/seed.js",
     "create-test-users": "node src/utils/createTestUser.js",
+    "system-init": "node scripts/init/system-init.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

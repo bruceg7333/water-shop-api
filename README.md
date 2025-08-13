@@ -302,13 +302,13 @@ npm run dev
 npm run start
 ```
 
-### 数据初始化
+### 数据初始化 (必须先执行这个!!!!,不然admin不可用)
 ```bash
 # 添加测试数据
 npm run seed
 
 # 创建测试用户
-npm run create-test-users
+npm run system-init
 ```
 
 ## 部署说明

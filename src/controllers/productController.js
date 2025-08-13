@@ -363,7 +363,8 @@ exports.getProductById = async (req, res) => {
       rating: reviewStats.length > 0 ? reviewStats[0].avgRating.toFixed(1) : "0.0",
       reviewCount: reviewStats.length > 0 ? reviewStats[0].totalReviews : 0,
       isActive: product.isActive,
-      createdAt: product.createdAt
+      createdAt: product.createdAt,
+      params: product.params
     };
     
     res.status(200).json({

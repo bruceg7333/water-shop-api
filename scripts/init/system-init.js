@@ -3,11 +3,18 @@
  * 用于首次部署时创建必要的初始数据
  * 包括：超级管理员、系统配置、会员等级设置等
  */
-
+const dotenv = require('dotenv');
+// 加载环境变量
+dotenv.config();
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const config = require('../../src/config/config');
 
+
+
+
+
+console.log(config.mongoURI)
 // 连接数据库
 mongoose.connect(config.mongoURI)
   .then(() => console.log('✅ 数据库连接成功'))
@@ -17,6 +24,7 @@ mongoose.connect(config.mongoURI)
   });
 
 const User = require('../../src/models/user');
+const Administrator = require('../../src/models/administrator');
 
 class SystemInitializer {
   constructor() {
@@ -33,7 +41,7 @@ class SystemInitializer {
     
     try {
       // 检查是否已存在超级管理员
-      const existingAdmin = await User.findOne({ username: 'superadmin' });
+      const existingAdmin = await Administrator.findOne({ username: 'superadmin' });
       
       if (existingAdmin) {
         this.results.skipped.push('超级管理员账户（已存在）');
@@ -42,11 +50,13 @@ class SystemInitializer {
       }
       
       // 创建超级管理员
-      const hashedPassword = await bcrypt.hash('admin123456', 10);
+      // const hashedPassword = await bcrypt.hash('admin123456', 10);
+      // console.log(hashedPassword, 'hashedPassword')
       
-      const superAdmin = new User({
+      const superAdmin = new Administrator({
         username: 'superadmin',
-        password: hashedPassword,
+        realName: "LISI",
+        password: 'admin123456',
         nickName: '潇湘夜雨',
         role: 'admin',
         isActive: true,
@@ -148,7 +158,7 @@ class SystemInitializer {
     
     try {
       // 验证超级管理员
-      const admin = await User.findOne({ username: 'superadmin', role: 'admin' });
+      const admin = await Administrator.findOne({ username: 'superadmin', role: 'admin' });
       if (admin) {
         console.log('✅ 超级管理员账户验证通过');
       } else {
