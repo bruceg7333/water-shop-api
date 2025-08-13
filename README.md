@@ -302,6 +302,13 @@ npm run dev
 npm run start
 ```
 
+
+### 本地启动Mongodb 数据库
+```bash
+docker-compose up
+
+```
+
 ### 数据初始化 (必须先执行这个!!!!,不然admin不可用)
 ```bash
 # 添加测试数据
