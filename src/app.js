@@ -7,7 +7,9 @@ const config = require('./config/config');
 const path = require('path');
 
 // 加载环境变量
-dotenv.config();
+dotenv.config( {
+  path: path.join(__dirname, '.env')}
+);
 
 // 连接数据库
 connectDB();

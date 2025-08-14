@@ -13,7 +13,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "水品质商城微信小程序后端API",
+  "description": "商城微信小程序后端API",
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

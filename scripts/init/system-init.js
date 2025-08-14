@@ -3,15 +3,15 @@
  * 用于首次部署时创建必要的初始数据
  * 包括：超级管理员、系统配置、会员等级设置等
  */
-const dotenv = require('dotenv');
-// 加载环境变量
-dotenv.config();
+const dotenv = require('dotenv')
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const config = require('../../src/config/config');
-
-
-
+dotenv.config(
+  {
+  path: path.join(__dirname, '.env')
+})
 
 
 console.log(config.mongoURI)
