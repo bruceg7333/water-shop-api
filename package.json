@@ -8,7 +8,8 @@
     "seed": "node src/utils/seed.js",
     "create-test-users": "node src/utils/createTestUser.js",
     "system-init": "node scripts/init/system-init.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "serve": "pm2 start --node-args='-r dotenv/config' src/app.js --env pro"
   },
   "keywords": [],
   "author": "",

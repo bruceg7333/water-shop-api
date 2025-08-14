@@ -4,7 +4,7 @@
 
 module.exports = {
   // 数据库配置
-  mongoURI: process.env.MONGODB_URI || 'mongodb://root:example@localhost:27017/water-shop?authSource=admin',
+  mongoURI: process.env.MONGO_URI || 'mongodb://root:Yc129@localhost:27017/water-shop?authSource=admin',
   
   // JWT配置
   jwtSecret: process.env.JWT_SECRET || 'water-shop-api-secret',
