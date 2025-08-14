@@ -1,15 +1,10 @@
 const express = require('express');
-const dotenv = require('dotenv');
+ require('dotenv').config();
 const cors = require('cors');
 const morgan = require('morgan');
 const connectDB = require('./config/database');
 const config = require('./config/config');
 const path = require('path');
-
-// 加载环境变量
-dotenv.config( {
-  path: path.join(__dirname, '.env')}
-);
 
 // 连接数据库
 connectDB();
